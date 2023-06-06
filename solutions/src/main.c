@@ -34,13 +34,21 @@ void AsmWriterEmit(AsmWriter* writer, const char* instruction) {
         arrpush(writer->output, *i);
     }
 }
-void AsmWriterEmitInstructionStreamEnd(AsmWriter* writer) {
+void AsmWriterEmitInstructionStreamEnd(AsmWriter* writer) { arrpush(writer->output, '\0'); }
+void AsmWriterInit(AsmWriter* writer) { writer->output = NULL; }
+void AsmWriterEmitHeader(AsmWriter* writer, char* filename) {
+    const char* token = strtok(filename, "/");
+    const char* prev_token = token;
+    while (token != NULL) {
+        prev_token = token;
+        token = strtok(NULL, "/");
+    }
+    AsmWriterEmit(writer, "; ");
+    AsmWriterEmit(writer, prev_token);
+    AsmWriterEmit(writer, " disassembly:");
     AsmWriterEmitInstructionEnd(writer);
-    arrpush(writer->output, '\0');
-}
-void AsmWriterInit(AsmWriter* writer) {
-    writer->output = NULL;
-    AsmWriterEmit(writer, "bits16");
+
+    AsmWriterEmit(writer, "bits 16");
     AsmWriterEmitInstructionEnd(writer);
     AsmWriterEmitInstructionEnd(writer);
 }
@@ -139,6 +147,7 @@ int main(int argc, char* argv[]) {
 
     AsmWriter writer;
     AsmWriterInit(&writer);
+    AsmWriterEmitHeader(&writer, input_filename);
     size_t i = 0;
     while (i < buffer_length) {
         uint8_t op_code = buffer[i];
@@ -155,7 +164,7 @@ int main(int argc, char* argv[]) {
                 const char* dest_reg = LookupRegister(op_code, R_M_MASK(next_byte));
 
                 bool d = D_MASK(op_code);
-                if (!d) {
+                if (d) {
                     const char* temp = src_reg;
                     src_reg = dest_reg;
                     dest_reg = temp;
