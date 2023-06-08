@@ -70,6 +70,11 @@ void AsmWriterEmitHeader(AsmWriter* writer, char* filename) {
     AsmWriterEmitInstructionEnd(writer);
     AsmWriterEmitInstructionEnd(writer);
 }
+void AsmWriterEmitBits8(AsmWriter* writer, uint8_t bits) {
+    char str[7];
+    sprintf(str, "%hhu", bits);
+    AsmWriterEmit(writer, str);
+}
 
 uint8_t* ReadFile(char* input_filename, size_t* buffer_length) {
     FILE* fd = fopen(input_filename, "r");
@@ -145,6 +150,14 @@ const char* LookupRegister(uint8_t op_code, uint8_t reg) {
     }
 }
 
+void ParseIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
+    uint8_t byte = ByteCursorPop(cursor);
+    AsmWriterEmit(writer, "mov ");
+    AsmWriterEmit(writer, reg);
+    AsmWriterEmit(writer, ", ");
+    AsmWriterEmitBits8(writer, byte);
+}
+
 int main(int argc, char* argv[]) {
     char* input_filename = NULL;
     switch (argc) {
@@ -168,7 +181,6 @@ int main(int argc, char* argv[]) {
     AsmWriterEmitHeader(&writer, input_filename);
     while (ByteCursorNotEmpty(&cursor)) {
         uint8_t op_code = ByteCursorPop(&cursor);
-        breakpoint();
         switch (op_code) {
             case 0x88:
             case 0x89:
@@ -190,6 +202,38 @@ int main(int argc, char* argv[]) {
                 AsmWriterEmit(&writer, dest_reg);
                 AsmWriterEmit(&writer, ", ");
                 AsmWriterEmit(&writer, src_reg);
+                break;
+            }
+            case 0xB0: {
+                ParseIm8ToReg(&cursor, &writer, "al");
+                break;
+            }
+            case 0xB1: {
+                ParseIm8ToReg(&cursor, &writer, "cl");
+                break;
+            }
+            case 0xB2: {
+                ParseIm8ToReg(&cursor, &writer, "dl");
+                break;
+            }
+            case 0xB3: {
+                ParseIm8ToReg(&cursor, &writer, "bl");
+                break;
+            }
+            case 0xB4: {
+                ParseIm8ToReg(&cursor, &writer, "ah");
+                break;
+            }
+            case 0xB5: {
+                ParseIm8ToReg(&cursor, &writer, "ch");
+                break;
+            }
+            case 0xB6: {
+                ParseIm8ToReg(&cursor, &writer, "dh");
+                break;
+            }
+            case 0xB7: {
+                ParseIm8ToReg(&cursor, &writer, "bh");
                 break;
             }
             default: {

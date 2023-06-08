@@ -1,3 +1,4 @@
-./build/main $1 > ./build/test.asm;
+FILENAME=$(find ../perfaware/part1/ -not -name "*.asm" -not -name "*.txt" -not -name "*.cpp" -name "*$1*")
+./build/main $FILENAME > ./build/test.asm;
 nasm ./build/test.asm -o ./build/test
-diff ./build/test $1
+diff ./build/test $FILENAME

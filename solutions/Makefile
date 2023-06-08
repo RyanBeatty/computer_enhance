@@ -46,6 +46,10 @@ $(BUILD_DIR)/%.c.o: %.c
 clean:
 	rm -rf $(BUILD_DIR)
 
+scratch: $(BUILD_DIR)/$(TARGET_EXEC)
+	nasm ../perfaware/part1/bt_scratch.asm -o $(BUILD_DIR)/scratch
+	gdb -ex run --args $(BUILD_DIR)/$(TARGET_EXEC) $(BUILD_DIR)/scratch
+
 # Include the .d makefiles. The - at the front suppresses the errors of missing
 # Makefiles. Initially, all the .d files will be missing, and we don't want those
 # errors to show up.
