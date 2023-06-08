@@ -7,15 +7,12 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
-#if DEBUG
-#define Assert(expr)  \
-    {                 \
-        breakpoint(); \
-        assert(expr); \
+#define Assert(expr)      \
+    {                     \
+        if (!(expr)) {    \
+            breakpoint(); \
+        }                 \
     }
-#else
-#define Assert(expr)
-#endif
 
 void __attribute__((noinline)) breakpoint() {}
 
@@ -23,6 +20,27 @@ void __attribute__((noinline)) breakpoint() {}
 #define D_MASK(byte) (((byte)&0b00000010) >> 1)
 #define REG_MASK(byte) (((byte)&0b00111000) >> 3)
 #define R_M_MASK(byte) ((byte)&0b00000111)
+
+typedef struct ByteCursor {
+    uint8_t* stream;
+    size_t stream_len;
+    size_t i;
+} ByteCursor;
+
+void ByteCursorInit(ByteCursor* cursor, uint8_t* stream, size_t stream_len) {
+    cursor->stream = stream;
+    cursor->stream_len = stream_len;
+    cursor->i = 0;
+}
+
+uint8_t ByteCursorPop(ByteCursor* cursor) {
+    Assert(cursor->i < cursor->stream_len);
+    uint8_t next_byte = cursor->stream[cursor->i];
+    ++cursor->i;
+    return next_byte;
+}
+
+bool ByteCursorNotEmpty(ByteCursor* cursor) { return cursor->i < cursor->stream_len; }
 
 typedef struct AsmWriter {
     char* output;
@@ -60,8 +78,7 @@ uint8_t* ReadFile(char* input_filename, size_t* buffer_length) {
     Assert(num_bytes != -1);
     uint8_t* buffer = (uint8_t*)calloc(num_bytes, sizeof(uint8_t));
     rewind(fd);
-    size_t num_read = fread(buffer, num_bytes, sizeof(uint8_t), fd);
-    Assert(num_read == num_bytes);
+    fread(buffer, num_bytes, sizeof(uint8_t), fd);
     fclose(fd);
     *buffer_length = num_bytes;
     return buffer;
@@ -72,7 +89,6 @@ const char* LookupRegister(uint8_t op_code, uint8_t reg) {
     uint8_t w = W_MASK(op_code);
     w = w << 3;
     reg |= w;
-    breakpoint();
     switch (reg) {
         case 0b00000000: {
             return "al";
@@ -144,13 +160,15 @@ int main(int argc, char* argv[]) {
 
     size_t buffer_length = 0;
     uint8_t* buffer = ReadFile(input_filename, &buffer_length);
+    ByteCursor cursor;
+    ByteCursorInit(&cursor, buffer, buffer_length);
 
     AsmWriter writer;
     AsmWriterInit(&writer);
     AsmWriterEmitHeader(&writer, input_filename);
-    size_t i = 0;
-    while (i < buffer_length) {
-        uint8_t op_code = buffer[i];
+    while (ByteCursorNotEmpty(&cursor)) {
+        uint8_t op_code = ByteCursorPop(&cursor);
+        breakpoint();
         switch (op_code) {
             case 0x88:
             case 0x89:
@@ -158,8 +176,7 @@ int main(int argc, char* argv[]) {
             case 0x8B: {
                 AsmWriterEmit(&writer, "mov");
                 AsmWriterEmit(&writer, " ");
-                ++i;
-                uint8_t next_byte = buffer[i];
+                uint8_t next_byte = ByteCursorPop(&cursor);
                 const char* src_reg = LookupRegister(op_code, REG_MASK(next_byte));
                 const char* dest_reg = LookupRegister(op_code, R_M_MASK(next_byte));
 
@@ -173,7 +190,6 @@ int main(int argc, char* argv[]) {
                 AsmWriterEmit(&writer, dest_reg);
                 AsmWriterEmit(&writer, ", ");
                 AsmWriterEmit(&writer, src_reg);
-                ++i;
                 break;
             }
             default: {
