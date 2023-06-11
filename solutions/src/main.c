@@ -20,6 +20,12 @@ void __attribute__((noinline)) breakpoint() {}
 #define D_MASK(byte) (((byte)&0b00000010) >> 1)
 #define REG_MASK(byte) (((byte)&0b00111000) >> 3)
 #define R_M_MASK(byte) ((byte)&0b00000111)
+#define MOD_MASK(byte) (((byte)&0b11000000))
+
+#define MOD_MEMORY_MODE_NO_DISP ((uint8_t)0b00000000)
+#define MOD_MEMORY_MODE_8BIT_DISP ((uint8_t)0b01000000)
+#define MOD_MEMORY_MODE_16BIT_DISP ((uint8_t)0b10000000)
+#define MOD_REGISTER_MODE ((uint8_t)0b11000000)
 
 typedef struct ByteCursor {
     uint8_t* stream;
@@ -100,7 +106,7 @@ uint8_t* ReadFile(char* input_filename, size_t* buffer_length) {
     return buffer;
 }
 
-const char* LookupRegister(uint8_t op_code, uint8_t reg) {
+const char* ResolveRegister(uint8_t op_code, uint8_t reg) {
     // Do some masking so we can make this a simple switch lookup.
     uint8_t w = W_MASK(op_code);
     w = w << 3;
@@ -161,6 +167,21 @@ const char* LookupRegister(uint8_t op_code, uint8_t reg) {
     }
 }
 
+const char* ResolveRM(ByteCursor* cursor, uint8_t op_code, uint8_t byte) {
+    const char* res = NULL;
+    switch (MOD_MASK(byte)) {
+        case MOD_REGISTER_MODE: {
+            res = ResolveRegister(op_code, R_M_MASK(byte));
+            break;
+        }
+        default: {
+            fprintf(stderr, "Uknown mode: %x\n", MOD_MASK(byte));
+            exit(EXIT_FAILURE);
+        }
+    }
+    return res;
+}
+
 void ParseIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
     uint8_t byte = ByteCursorPop(cursor);
     AsmWriterEmit(writer, "mov ");
@@ -208,11 +229,9 @@ int main(int argc, char* argv[]) {
             case 0x89:
             case 0x8A:
             case 0x8B: {
-                AsmWriterEmit(&writer, "mov");
-                AsmWriterEmit(&writer, " ");
                 uint8_t next_byte = ByteCursorPop(&cursor);
-                const char* src_reg = LookupRegister(op_code, REG_MASK(next_byte));
-                const char* dest_reg = LookupRegister(op_code, R_M_MASK(next_byte));
+                const char* src_reg = ResolveRegister(op_code, REG_MASK(next_byte));
+                const char* dest_reg = ResolveRM(&cursor, op_code, next_byte);
 
                 bool d = D_MASK(op_code);
                 if (d) {
@@ -221,6 +240,8 @@ int main(int argc, char* argv[]) {
                     dest_reg = temp;
                 }
 
+                AsmWriterEmit(&writer, "mov");
+                AsmWriterEmit(&writer, " ");
                 AsmWriterEmit(&writer, dest_reg);
                 AsmWriterEmit(&writer, ", ");
                 AsmWriterEmit(&writer, src_reg);
