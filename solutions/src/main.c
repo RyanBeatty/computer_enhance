@@ -47,13 +47,17 @@ typedef struct AsmWriter {
 } AsmWriter;
 
 void AsmWriterEmitInstructionEnd(AsmWriter* writer) { arrpush(writer->output, '\n'); }
+
 void AsmWriterEmit(AsmWriter* writer, const char* instruction) {
     for (const char* i = instruction; *i != '\0'; ++i) {
         arrpush(writer->output, *i);
     }
 }
+
 void AsmWriterEmitInstructionStreamEnd(AsmWriter* writer) { arrpush(writer->output, '\0'); }
+
 void AsmWriterInit(AsmWriter* writer) { writer->output = NULL; }
+
 void AsmWriterEmitHeader(AsmWriter* writer, char* filename) {
     const char* token = strtok(filename, "/");
     const char* prev_token = token;
@@ -70,9 +74,16 @@ void AsmWriterEmitHeader(AsmWriter* writer, char* filename) {
     AsmWriterEmitInstructionEnd(writer);
     AsmWriterEmitInstructionEnd(writer);
 }
+
 void AsmWriterEmitBits8(AsmWriter* writer, uint8_t bits) {
-    char str[7];
+    char str[9];
     sprintf(str, "%hhu", bits);
+    AsmWriterEmit(writer, str);
+}
+
+void AsmWriterEmitBits16(AsmWriter* writer, uint16_t bits) {
+    char str[17];
+    sprintf(str, "%hu", bits);
     AsmWriterEmit(writer, str);
 }
 
@@ -158,6 +169,16 @@ void ParseIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
     AsmWriterEmitBits8(writer, byte);
 }
 
+void ParseIm16ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
+    uint8_t low = ByteCursorPop(cursor);
+    uint8_t high = ByteCursorPop(cursor);
+    uint16_t data = (high << 8) | low;
+    AsmWriterEmit(writer, "mov ");
+    AsmWriterEmit(writer, reg);
+    AsmWriterEmit(writer, ", ");
+    AsmWriterEmitBits16(writer, data);
+}
+
 int main(int argc, char* argv[]) {
     char* input_filename = NULL;
     switch (argc) {
@@ -176,10 +197,11 @@ int main(int argc, char* argv[]) {
     ByteCursor cursor;
     ByteCursorInit(&cursor, buffer, buffer_length);
 
+    bool no_error = 1;
     AsmWriter writer;
     AsmWriterInit(&writer);
     AsmWriterEmitHeader(&writer, input_filename);
-    while (ByteCursorNotEmpty(&cursor)) {
+    while (no_error && ByteCursorNotEmpty(&cursor)) {
         uint8_t op_code = ByteCursorPop(&cursor);
         switch (op_code) {
             case 0x88:
@@ -236,9 +258,41 @@ int main(int argc, char* argv[]) {
                 ParseIm8ToReg(&cursor, &writer, "bh");
                 break;
             }
+            case 0xB8: {
+                ParseIm16ToReg(&cursor, &writer, "ax");
+                break;
+            }
+            case 0xB9: {
+                ParseIm16ToReg(&cursor, &writer, "cx");
+                break;
+            }
+            case 0xBA: {
+                ParseIm16ToReg(&cursor, &writer, "dx");
+                break;
+            }
+            case 0xBB: {
+                ParseIm16ToReg(&cursor, &writer, "bx");
+                break;
+            }
+            case 0xBC: {
+                ParseIm16ToReg(&cursor, &writer, "sp");
+                break;
+            }
+            case 0xBD: {
+                ParseIm16ToReg(&cursor, &writer, "bp");
+                break;
+            }
+            case 0xBE: {
+                ParseIm16ToReg(&cursor, &writer, "si");
+                break;
+            }
+            case 0xBF: {
+                ParseIm16ToReg(&cursor, &writer, "di");
+                break;
+            }
             default: {
                 fprintf(stderr, "Unknown opcode: %x\n", op_code);
-                exit(EXIT_FAILURE);
+                no_error = 0;
             }
         }
         AsmWriterEmitInstructionEnd(&writer);
