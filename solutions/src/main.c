@@ -168,18 +168,50 @@ const char* ResolveRegister(uint8_t op_code, uint8_t reg) {
 }
 
 const char* ResolveRM(ByteCursor* cursor, uint8_t op_code, uint8_t byte) {
-    const char* res = NULL;
     switch (MOD_MASK(byte)) {
-        case MOD_REGISTER_MODE: {
-            res = ResolveRegister(op_code, R_M_MASK(byte));
+        case MOD_MEMORY_MODE_NO_DISP: {
+            switch (R_M_MASK(byte)) {
+                case 0x00: {
+                    return "[bx + si]";
+                }
+                case 0x01: {
+                    return "[bx + di]";
+                }
+                case 0x02: {
+                    return "[bp + si]";
+                }
+                case 0x03: {
+                    return "[bp + di]";
+                }
+                case 0x04: {
+                    return "[si]";
+                }
+                case 0x05: {
+                    return "[di]";
+                }
+                case 0x06: {
+                    Assert(false);
+                    // TODO: figure out what to do here.
+                    return "[bx + di]";
+                }
+                case 0x07: {
+                    return "[bx]";
+                }
+                default: {
+                    fprintf(stderr, "Uknown rm: %x\n", R_M_MASK(byte));
+                    exit(EXIT_FAILURE);
+                }
+            }
             break;
         }
+        case MOD_REGISTER_MODE: {
+            return ResolveRegister(op_code, R_M_MASK(byte));
+        }
         default: {
-            fprintf(stderr, "Uknown mode: %x\n", MOD_MASK(byte));
+            fprintf(stderr, "Unknown mode: %x\n", MOD_MASK(byte));
             exit(EXIT_FAILURE);
         }
     }
-    return res;
 }
 
 void ParseIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
@@ -230,21 +262,21 @@ int main(int argc, char* argv[]) {
             case 0x8A:
             case 0x8B: {
                 uint8_t next_byte = ByteCursorPop(&cursor);
-                const char* src_reg = ResolveRegister(op_code, REG_MASK(next_byte));
-                const char* dest_reg = ResolveRM(&cursor, op_code, next_byte);
-
-                bool d = D_MASK(op_code);
-                if (d) {
-                    const char* temp = src_reg;
-                    src_reg = dest_reg;
-                    dest_reg = temp;
-                }
-
                 AsmWriterEmit(&writer, "mov");
                 AsmWriterEmit(&writer, " ");
-                AsmWriterEmit(&writer, dest_reg);
-                AsmWriterEmit(&writer, ", ");
-                AsmWriterEmit(&writer, src_reg);
+                if (D_MASK(op_code)) {
+                    const char* str1 = ResolveRegister(op_code, REG_MASK(next_byte));
+                    AsmWriterEmit(&writer, str1);
+                    AsmWriterEmit(&writer, ", ");
+                    const char* str2 = ResolveRM(&cursor, op_code, next_byte);
+                    AsmWriterEmit(&writer, str2);
+                } else {
+                    const char* str1 = ResolveRM(&cursor, op_code, next_byte);
+                    AsmWriterEmit(&writer, str1);
+                    AsmWriterEmit(&writer, ", ");
+                    const char* str2 = ResolveRegister(op_code, REG_MASK(next_byte));
+                    AsmWriterEmit(&writer, str2);
+                }
                 break;
             }
             case 0xB0: {
