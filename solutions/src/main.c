@@ -226,9 +226,13 @@ void ParseRM(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, uint8_t byt
                     break;
                 }
                 case 0x06: {
-                    Assert(false);
-                    // TODO: figure out what to do here.
-                    AsmWriterEmit(writer, "[bx + di]");
+                    // Looks like this is always encoded as 16 bits.
+                    uint8_t low = ByteCursorPop(cursor);
+                    uint8_t high = ByteCursorPop(cursor);
+                    uint16_t direct_address = (high << 8) | low;
+                    AsmWriterEmit(writer, "[");
+                    AsmWriterEmitBits16(writer, direct_address);
+                    AsmWriterEmit(writer, "]");
                     break;
                 }
                 case 0x07: {
@@ -372,6 +376,25 @@ void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
     }
 }
 
+void ParseMemStore(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, bool parse_word) {
+    uint8_t mem_byte = ByteCursorPop(cursor);
+    AsmWriterEmit(writer, "mov");
+    AsmWriterEmit(writer, " ");
+    ParseRM(cursor, writer, op_code, mem_byte);
+    AsmWriterEmit(writer, ", ");
+    if (parse_word) {
+        AsmWriterEmit(writer, "word ");
+        uint8_t low = ByteCursorPop(cursor);
+        uint8_t high = ByteCursorPop(cursor);
+        uint16_t data = (high << 8) | low;
+        AsmWriterEmitBits16(writer, data);
+    } else {
+        AsmWriterEmit(writer, "byte ");
+        uint8_t data = ByteCursorPop(cursor);
+        AsmWriterEmitBits8(writer, data);
+    }
+}
+
 int main(int argc, char* argv[]) {
     char* input_filename = NULL;
     switch (argc) {
@@ -466,6 +489,15 @@ int main(int argc, char* argv[]) {
             }
             case 0xBF: {
                 ParseIm16ToReg(&cursor, &writer, "di");
+                break;
+            }
+            case 0xC6: {
+                ParseMemStore(&cursor, &writer, op_code, false);
+                break;
+            }
+            case 0xC7: {
+                breakpoint();
+                ParseMemStore(&cursor, &writer, op_code, true);
                 break;
             }
             default: {
