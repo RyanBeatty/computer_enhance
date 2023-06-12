@@ -365,9 +365,9 @@ void ParseIm16ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
     AsmWriterEmitBits16(writer, data, false);
 }
 
-void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
+void ParseBinaryOp(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, const char* op_symbol) {
     uint8_t next_byte = ByteCursorPop(cursor);
-    AsmWriterEmit(writer, "mov");
+    AsmWriterEmit(writer, op_symbol);
     AsmWriterEmit(writer, " ");
     if (D_MASK(op_code)) {
         ParseRegister(writer, op_code, REG_MASK(next_byte));
@@ -379,6 +379,10 @@ void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
         ParseRegister(writer, op_code, REG_MASK(next_byte));
     }
 }
+
+void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) { ParseBinaryOp(cursor, writer, op_code, "mov"); }
+
+void ParseAdd(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) { ParseBinaryOp(cursor, writer, op_code, "add"); }
 
 void ParseMemStore(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, bool parse_word) {
     uint8_t mem_byte = ByteCursorPop(cursor);
@@ -435,13 +439,19 @@ int main(int argc, char* argv[]) {
     ByteCursor cursor;
     ByteCursorInit(&cursor, buffer, buffer_length);
 
-    bool no_error = 1;
     AsmWriter writer;
     AsmWriterInit(&writer);
     AsmWriterEmitHeader(&writer, input_filename);
-    while (no_error && ByteCursorNotEmpty(&cursor)) {
+    while (ByteCursorNotEmpty(&cursor)) {
         uint8_t op_code = ByteCursorPop(&cursor);
         switch (op_code) {
+            case 0x00:
+            case 0x01:
+            case 0x02:
+            case 0x03: {
+                ParseAdd(&cursor, &writer, op_code);
+                break;
+            }
             case 0xA1: {
                 ParseAccLoadStore(&cursor, &writer, "ax", true);
                 break;
@@ -531,8 +541,7 @@ int main(int argc, char* argv[]) {
                 break;
             }
             default: {
-                fprintf(stderr, "Unknown opcode: %x\n", op_code);
-                no_error = 0;
+                ParserError(&writer, "Unknown opcode: %x\n", op_code);
             }
         }
         AsmWriterEmitInstructionEnd(&writer);
