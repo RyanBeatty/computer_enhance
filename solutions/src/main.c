@@ -241,6 +241,94 @@ void ParseRM(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, uint8_t byt
             }
             break;
         }
+        case MOD_MEMORY_MODE_8BIT_DISP: {
+            switch (R_M_MASK(byte)) {
+                case 0x00: {
+                    AsmWriterEmit(writer, "[bx + si + ");
+                    break;
+                }
+                case 0x01: {
+                    AsmWriterEmit(writer, "[bx + di + ");
+                    break;
+                }
+                case 0x02: {
+                    AsmWriterEmit(writer, "[bp + si + ");
+                    break;
+                }
+                case 0x03: {
+                    AsmWriterEmit(writer, "[bp + di + ");
+                    break;
+                }
+                case 0x04: {
+                    AsmWriterEmit(writer, "[si + ");
+                    break;
+                }
+                case 0x05: {
+                    AsmWriterEmit(writer, "[di + ");
+                    break;
+                }
+                case 0x06: {
+                    AsmWriterEmit(writer, "[bp + ");
+                    break;
+                }
+                case 0x07: {
+                    AsmWriterEmit(writer, "[bx + ");
+                    break;
+                }
+                default: {
+                    ParserError(writer, "Uknown rm: %x", R_M_MASK(byte));
+                }
+            }
+            uint8_t bits = ByteCursorPop(cursor);
+            AsmWriterEmitBits8(writer, bits);
+            AsmWriterEmit(writer, "]");
+            break;
+        }
+        case MOD_MEMORY_MODE_16BIT_DISP: {
+            switch (R_M_MASK(byte)) {
+                case 0x00: {
+                    AsmWriterEmit(writer, "[bx + si + ");
+                    break;
+                }
+                case 0x01: {
+                    AsmWriterEmit(writer, "[bx + di + ");
+                    break;
+                }
+                case 0x02: {
+                    AsmWriterEmit(writer, "[bp + si + ");
+                    break;
+                }
+                case 0x03: {
+                    AsmWriterEmit(writer, "[bp + di + ");
+                    break;
+                }
+                case 0x04: {
+                    AsmWriterEmit(writer, "[si + ");
+                    break;
+                }
+                case 0x05: {
+                    AsmWriterEmit(writer, "[di + ");
+                    break;
+                }
+                case 0x06: {
+                    AsmWriterEmit(writer, "[bp + ");
+                    break;
+                }
+                case 0x07: {
+                    AsmWriterEmit(writer, "[bx + ");
+                    break;
+                }
+                default: {
+                    ParserError(writer, "Uknown rm: %x", R_M_MASK(byte));
+                }
+            }
+            uint8_t low = ByteCursorPop(cursor);
+            uint8_t high = ByteCursorPop(cursor);
+            uint16_t bits = (high << 8) | low;
+            AsmWriterEmitBits16(writer, bits);
+            AsmWriterEmit(writer, "]");
+            break;
+        }
         case MOD_REGISTER_MODE: {
             ParseRegister(writer, op_code, R_M_MASK(byte));
             break;
