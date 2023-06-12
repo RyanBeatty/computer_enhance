@@ -83,15 +83,19 @@ void AsmWriterEmitHeader(AsmWriter* writer, char* filename) {
     AsmWriterEmitInstructionEnd(writer);
 }
 
-void AsmWriterEmitBits8(AsmWriter* writer, uint8_t bits) {
+void AsmWriterEmitBits8(AsmWriter* writer, uint8_t bits, bool is_signed) {
     char str[9];
-    sprintf(str, "%hhu", bits);
+    // If we are signed, then we are to emit the sign of the number.
+    const char* fmt = is_signed ? "%+hhd" : "+ %hhu";
+    sprintf(str, fmt, bits);
     AsmWriterEmit(writer, str);
 }
 
-void AsmWriterEmitBits16(AsmWriter* writer, uint16_t bits) {
+void AsmWriterEmitBits16(AsmWriter* writer, uint16_t bits, bool is_signed) {
     char str[17];
-    sprintf(str, "%hu", bits);
+    // If we are signed, then we are to emit the sign of the number.
+    const char* fmt = is_signed ? "%+hd" : "+ %hu";
+    sprintf(str, fmt, bits);
     AsmWriterEmit(writer, str);
 }
 
@@ -231,7 +235,7 @@ void ParseRM(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, uint8_t byt
                     uint8_t high = ByteCursorPop(cursor);
                     uint16_t direct_address = (high << 8) | low;
                     AsmWriterEmit(writer, "[");
-                    AsmWriterEmitBits16(writer, direct_address);
+                    AsmWriterEmitBits16(writer, direct_address, false);
                     AsmWriterEmit(writer, "]");
                     break;
                 }
@@ -248,35 +252,35 @@ void ParseRM(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, uint8_t byt
         case MOD_MEMORY_MODE_8BIT_DISP: {
             switch (R_M_MASK(byte)) {
                 case 0x00: {
-                    AsmWriterEmit(writer, "[bx + si + ");
+                    AsmWriterEmit(writer, "[bx + si ");
                     break;
                 }
                 case 0x01: {
-                    AsmWriterEmit(writer, "[bx + di + ");
+                    AsmWriterEmit(writer, "[bx + di ");
                     break;
                 }
                 case 0x02: {
-                    AsmWriterEmit(writer, "[bp + si + ");
+                    AsmWriterEmit(writer, "[bp + si ");
                     break;
                 }
                 case 0x03: {
-                    AsmWriterEmit(writer, "[bp + di + ");
+                    AsmWriterEmit(writer, "[bp + di ");
                     break;
                 }
                 case 0x04: {
-                    AsmWriterEmit(writer, "[si + ");
+                    AsmWriterEmit(writer, "[si ");
                     break;
                 }
                 case 0x05: {
-                    AsmWriterEmit(writer, "[di + ");
+                    AsmWriterEmit(writer, "[di ");
                     break;
                 }
                 case 0x06: {
-                    AsmWriterEmit(writer, "[bp + ");
+                    AsmWriterEmit(writer, "[bp ");
                     break;
                 }
                 case 0x07: {
-                    AsmWriterEmit(writer, "[bx + ");
+                    AsmWriterEmit(writer, "[bx ");
                     break;
                 }
                 default: {
@@ -284,42 +288,42 @@ void ParseRM(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, uint8_t byt
                 }
             }
             uint8_t bits = ByteCursorPop(cursor);
-            AsmWriterEmitBits8(writer, bits);
+            AsmWriterEmitBits8(writer, bits, true);
             AsmWriterEmit(writer, "]");
             break;
         }
         case MOD_MEMORY_MODE_16BIT_DISP: {
             switch (R_M_MASK(byte)) {
                 case 0x00: {
-                    AsmWriterEmit(writer, "[bx + si + ");
+                    AsmWriterEmit(writer, "[bx + si ");
                     break;
                 }
                 case 0x01: {
-                    AsmWriterEmit(writer, "[bx + di + ");
+                    AsmWriterEmit(writer, "[bx + di ");
                     break;
                 }
                 case 0x02: {
-                    AsmWriterEmit(writer, "[bp + si + ");
+                    AsmWriterEmit(writer, "[bp + si ");
                     break;
                 }
                 case 0x03: {
-                    AsmWriterEmit(writer, "[bp + di + ");
+                    AsmWriterEmit(writer, "[bp + di ");
                     break;
                 }
                 case 0x04: {
-                    AsmWriterEmit(writer, "[si + ");
+                    AsmWriterEmit(writer, "[si ");
                     break;
                 }
                 case 0x05: {
-                    AsmWriterEmit(writer, "[di + ");
+                    AsmWriterEmit(writer, "[di ");
                     break;
                 }
                 case 0x06: {
-                    AsmWriterEmit(writer, "[bp + ");
+                    AsmWriterEmit(writer, "[bp ");
                     break;
                 }
                 case 0x07: {
-                    AsmWriterEmit(writer, "[bx + ");
+                    AsmWriterEmit(writer, "[bx ");
                     break;
                 }
                 default: {
@@ -329,7 +333,7 @@ void ParseRM(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, uint8_t byt
             uint8_t low = ByteCursorPop(cursor);
             uint8_t high = ByteCursorPop(cursor);
             uint16_t bits = (high << 8) | low;
-            AsmWriterEmitBits16(writer, bits);
+            AsmWriterEmitBits16(writer, bits, true);
             AsmWriterEmit(writer, "]");
             break;
         }
@@ -348,7 +352,7 @@ void ParseIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
     AsmWriterEmit(writer, "mov ");
     AsmWriterEmit(writer, reg);
     AsmWriterEmit(writer, ", ");
-    AsmWriterEmitBits8(writer, byte);
+    AsmWriterEmitBits8(writer, byte, false);
 }
 
 void ParseIm16ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
@@ -358,7 +362,7 @@ void ParseIm16ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
     AsmWriterEmit(writer, "mov ");
     AsmWriterEmit(writer, reg);
     AsmWriterEmit(writer, ", ");
-    AsmWriterEmitBits16(writer, data);
+    AsmWriterEmitBits16(writer, data, false);
 }
 
 void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
@@ -387,11 +391,29 @@ void ParseMemStore(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, bool 
         uint8_t low = ByteCursorPop(cursor);
         uint8_t high = ByteCursorPop(cursor);
         uint16_t data = (high << 8) | low;
-        AsmWriterEmitBits16(writer, data);
+        AsmWriterEmitBits16(writer, data, false);
     } else {
         AsmWriterEmit(writer, "byte ");
         uint8_t data = ByteCursorPop(cursor);
-        AsmWriterEmitBits8(writer, data);
+        AsmWriterEmitBits8(writer, data, false);
+    }
+}
+
+void ParseAccLoadStore(ByteCursor* cursor, AsmWriter* writer, const char* reg, bool is_load) {
+    uint8_t low = ByteCursorPop(cursor);
+    uint8_t high = ByteCursorPop(cursor);
+    uint16_t data = (high << 8) | low;
+    AsmWriterEmit(writer, "mov ");
+    if (is_load) {
+        AsmWriterEmit(writer, reg);
+        AsmWriterEmit(writer, ", [");
+        AsmWriterEmitBits16(writer, data, false);
+        AsmWriterEmit(writer, "]");
+    } else {
+        AsmWriterEmit(writer, "[");
+        AsmWriterEmitBits16(writer, data, false);
+        AsmWriterEmit(writer, "], ");
+        AsmWriterEmit(writer, reg);
     }
 }
 
@@ -420,6 +442,14 @@ int main(int argc, char* argv[]) {
     while (no_error && ByteCursorNotEmpty(&cursor)) {
         uint8_t op_code = ByteCursorPop(&cursor);
         switch (op_code) {
+            case 0xA1: {
+                ParseAccLoadStore(&cursor, &writer, "ax", true);
+                break;
+            }
+            case 0xA3: {
+                ParseAccLoadStore(&cursor, &writer, "ax", false);
+                break;
+            }
             case 0x88:
             case 0x89:
             case 0x8A:
