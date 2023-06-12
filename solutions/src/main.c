@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -7,11 +8,12 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
-#define Assert(expr)      \
-    {                     \
-        if (!(expr)) {    \
-            breakpoint(); \
-        }                 \
+#define Assert(expr)       \
+    {                      \
+        if (!(expr)) {     \
+            breakpoint();  \
+            assert(false); \
+        }                  \
     }
 
 void __attribute__((noinline)) breakpoint() {}
@@ -214,6 +216,17 @@ const char* ResolveRM(ByteCursor* cursor, uint8_t op_code, uint8_t byte) {
     }
 }
 
+void ParserError(AsmWriter* writer, const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+
+    AsmWriterEmitInstructionStreamEnd(writer);
+    printf("%s", writer->output);
+    exit(EXIT_FAILURE);
+}
+
 void ParseIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
     uint8_t byte = ByteCursorPop(cursor);
     AsmWriterEmit(writer, "mov ");
@@ -230,6 +243,25 @@ void ParseIm16ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
     AsmWriterEmit(writer, reg);
     AsmWriterEmit(writer, ", ");
     AsmWriterEmitBits16(writer, data);
+}
+
+void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
+    uint8_t next_byte = ByteCursorPop(cursor);
+    AsmWriterEmit(writer, "mov");
+    AsmWriterEmit(writer, " ");
+    if (D_MASK(op_code)) {
+        const char* str1 = ResolveRegister(op_code, REG_MASK(next_byte));
+        AsmWriterEmit(writer, str1);
+        AsmWriterEmit(writer, ", ");
+        const char* str2 = ResolveRM(cursor, op_code, next_byte);
+        AsmWriterEmit(writer, str2);
+    } else {
+        const char* str1 = ResolveRM(cursor, op_code, next_byte);
+        AsmWriterEmit(writer, str1);
+        AsmWriterEmit(writer, ", ");
+        const char* str2 = ResolveRegister(op_code, REG_MASK(next_byte));
+        AsmWriterEmit(writer, str2);
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -261,22 +293,7 @@ int main(int argc, char* argv[]) {
             case 0x89:
             case 0x8A:
             case 0x8B: {
-                uint8_t next_byte = ByteCursorPop(&cursor);
-                AsmWriterEmit(&writer, "mov");
-                AsmWriterEmit(&writer, " ");
-                if (D_MASK(op_code)) {
-                    const char* str1 = ResolveRegister(op_code, REG_MASK(next_byte));
-                    AsmWriterEmit(&writer, str1);
-                    AsmWriterEmit(&writer, ", ");
-                    const char* str2 = ResolveRM(&cursor, op_code, next_byte);
-                    AsmWriterEmit(&writer, str2);
-                } else {
-                    const char* str1 = ResolveRM(&cursor, op_code, next_byte);
-                    AsmWriterEmit(&writer, str1);
-                    AsmWriterEmit(&writer, ", ");
-                    const char* str2 = ResolveRegister(op_code, REG_MASK(next_byte));
-                    AsmWriterEmit(&writer, str2);
-                }
+                ParseMov(&cursor, &writer, op_code);
                 break;
             }
             case 0xB0: {
