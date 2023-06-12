@@ -108,123 +108,147 @@ uint8_t* ReadFile(char* input_filename, size_t* buffer_length) {
     return buffer;
 }
 
-const char* ResolveRegister(uint8_t op_code, uint8_t reg) {
-    // Do some masking so we can make this a simple switch lookup.
-    uint8_t w = W_MASK(op_code);
-    w = w << 3;
-    reg |= w;
-    switch (reg) {
-        case 0b00000000: {
-            return "al";
-        }
-        case 0b00001000: {
-            return "ax";
-        }
-        case 0b00000001: {
-            return "cl";
-        }
-        case 0b00001001: {
-            return "cx";
-        }
-        case 0b00000010: {
-            return "dl";
-        }
-        case 0b00001010: {
-            return "dx";
-        }
-        case 0b00000011: {
-            return "bl";
-        }
-        case 0b00001011: {
-            return "bx";
-        }
-        case 0b00000100: {
-            return "ah";
-        }
-        case 0b00001100: {
-            return "sp";
-        }
-        case 0b00000101: {
-            return "ch";
-        }
-        case 0b00001101: {
-            return "bp";
-        }
-        case 0b00000110: {
-            return "dh";
-        }
-        case 0b00001110: {
-            return "si";
-        }
-        case 0b00000111: {
-            return "bh";
-        }
-        case 0b00001111: {
-            return "di";
-        }
-        default: {
-            fprintf(stderr, "Unknown register: %x\n", reg);
-            exit(EXIT_FAILURE);
-        }
-    }
-}
-
-const char* ResolveRM(ByteCursor* cursor, uint8_t op_code, uint8_t byte) {
-    switch (MOD_MASK(byte)) {
-        case MOD_MEMORY_MODE_NO_DISP: {
-            switch (R_M_MASK(byte)) {
-                case 0x00: {
-                    return "[bx + si]";
-                }
-                case 0x01: {
-                    return "[bx + di]";
-                }
-                case 0x02: {
-                    return "[bp + si]";
-                }
-                case 0x03: {
-                    return "[bp + di]";
-                }
-                case 0x04: {
-                    return "[si]";
-                }
-                case 0x05: {
-                    return "[di]";
-                }
-                case 0x06: {
-                    Assert(false);
-                    // TODO: figure out what to do here.
-                    return "[bx + di]";
-                }
-                case 0x07: {
-                    return "[bx]";
-                }
-                default: {
-                    fprintf(stderr, "Uknown rm: %x\n", R_M_MASK(byte));
-                    exit(EXIT_FAILURE);
-                }
-            }
-            break;
-        }
-        case MOD_REGISTER_MODE: {
-            return ResolveRegister(op_code, R_M_MASK(byte));
-        }
-        default: {
-            fprintf(stderr, "Unknown mode: %x\n", MOD_MASK(byte));
-            exit(EXIT_FAILURE);
-        }
-    }
-}
-
 void ParserError(AsmWriter* writer, const char* fmt, ...) {
+    breakpoint();
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
 
     AsmWriterEmitInstructionStreamEnd(writer);
-    printf("%s", writer->output);
+    fprintf(stderr, "%s", writer->output);
     exit(EXIT_FAILURE);
+}
+
+void ParseRegister(AsmWriter* writer, uint8_t op_code, uint8_t reg) {
+    // Do some masking so we can make this a simple switch lookup.
+    uint8_t w = W_MASK(op_code);
+    w = w << 3;
+    reg |= w;
+    switch (reg) {
+        case 0b00000000: {
+            AsmWriterEmit(writer, "al");
+            break;
+        }
+        case 0b00001000: {
+            AsmWriterEmit(writer, "ax");
+            break;
+        }
+        case 0b00000001: {
+            AsmWriterEmit(writer, "cl");
+            break;
+        }
+        case 0b00001001: {
+            AsmWriterEmit(writer, "cx");
+            break;
+        }
+        case 0b00000010: {
+            AsmWriterEmit(writer, "dl");
+            break;
+        }
+        case 0b00001010: {
+            AsmWriterEmit(writer, "dx");
+            break;
+        }
+        case 0b00000011: {
+            AsmWriterEmit(writer, "bl");
+            break;
+        }
+        case 0b00001011: {
+            AsmWriterEmit(writer, "bx");
+            break;
+        }
+        case 0b00000100: {
+            AsmWriterEmit(writer, "ah");
+            break;
+        }
+        case 0b00001100: {
+            AsmWriterEmit(writer, "sp");
+            break;
+        }
+        case 0b00000101: {
+            AsmWriterEmit(writer, "ch");
+            break;
+        }
+        case 0b00001101: {
+            AsmWriterEmit(writer, "bp");
+            break;
+        }
+        case 0b00000110: {
+            AsmWriterEmit(writer, "dh");
+            break;
+        }
+        case 0b00001110: {
+            AsmWriterEmit(writer, "si");
+            break;
+        }
+        case 0b00000111: {
+            AsmWriterEmit(writer, "bh");
+            break;
+        }
+        case 0b00001111: {
+            AsmWriterEmit(writer, "di");
+            break;
+        }
+        default: {
+            ParserError(writer, "Unknown register: %x\n", reg);
+        }
+    }
+    return;
+}
+
+void ParseRM(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, uint8_t byte) {
+    switch (MOD_MASK(byte)) {
+        case MOD_MEMORY_MODE_NO_DISP: {
+            switch (R_M_MASK(byte)) {
+                case 0x00: {
+                    AsmWriterEmit(writer, "[bx + si]");
+                    break;
+                }
+                case 0x01: {
+                    AsmWriterEmit(writer, "[bx + di]");
+                    break;
+                }
+                case 0x02: {
+                    AsmWriterEmit(writer, "[bp + si]");
+                    break;
+                }
+                case 0x03: {
+                    AsmWriterEmit(writer, "[bp + di]");
+                    break;
+                }
+                case 0x04: {
+                    AsmWriterEmit(writer, "[si]");
+                    break;
+                }
+                case 0x05: {
+                    AsmWriterEmit(writer, "[di]");
+                    break;
+                }
+                case 0x06: {
+                    Assert(false);
+                    // TODO: figure out what to do here.
+                    AsmWriterEmit(writer, "[bx + di]");
+                    break;
+                }
+                case 0x07: {
+                    AsmWriterEmit(writer, "[bx]");
+                    break;
+                }
+                default: {
+                    ParserError(writer, "Uknown rm: %x\n", R_M_MASK(byte));
+                }
+            }
+            break;
+        }
+        case MOD_REGISTER_MODE: {
+            ParseRegister(writer, op_code, R_M_MASK(byte));
+            break;
+        }
+        default: {
+            ParserError(writer, "Unknown mode: %x\n", MOD_MASK(byte));
+        }
+    }
 }
 
 void ParseIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
@@ -250,17 +274,13 @@ void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
     AsmWriterEmit(writer, "mov");
     AsmWriterEmit(writer, " ");
     if (D_MASK(op_code)) {
-        const char* str1 = ResolveRegister(op_code, REG_MASK(next_byte));
-        AsmWriterEmit(writer, str1);
+        ParseRegister(writer, op_code, REG_MASK(next_byte));
         AsmWriterEmit(writer, ", ");
-        const char* str2 = ResolveRM(cursor, op_code, next_byte);
-        AsmWriterEmit(writer, str2);
+        ParseRM(cursor, writer, op_code, next_byte);
     } else {
-        const char* str1 = ResolveRM(cursor, op_code, next_byte);
-        AsmWriterEmit(writer, str1);
+        ParseRM(cursor, writer, op_code, next_byte);
         AsmWriterEmit(writer, ", ");
-        const char* str2 = ResolveRegister(op_code, REG_MASK(next_byte));
-        AsmWriterEmit(writer, str2);
+        ParseRegister(writer, op_code, REG_MASK(next_byte));
     }
 }
 
