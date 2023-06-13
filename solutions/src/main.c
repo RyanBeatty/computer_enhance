@@ -383,10 +383,6 @@ void ParseBinaryOp(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, const
 
 void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) { ParseBinaryOp(cursor, writer, op_code, "mov"); }
 
-void ParseAddMemOrReg(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
-    ParseBinaryOp(cursor, writer, op_code, "add");
-}
-
 void ParseMemStore(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, bool parse_word) {
     uint8_t mem_byte = ByteCursorPop(cursor);
     AsmWriterEmit(writer, "mov");
@@ -431,14 +427,14 @@ void ParseArithOpSymbol(ByteCursor* cursor, AsmWriter* writer, uint8_t byte) {
             AsmWriterEmit(writer, "add");
             break;
         }
-        // case 0x05: {
-        //     arith_op = "sub";
-        //     break;
-        // }
-        // case 0x07: {
-        //     arith_op = "cmp";
-        //     break;
-        // }
+        case 0x05: {
+            AsmWriterEmit(writer, "sub");
+            break;
+        }
+        case 0x07: {
+            AsmWriterEmit(writer, "cmp");
+            break;
+        }
         default: {
             ParserError(writer, "Unknown extended arithmetic op code %x\n", extended_op_code);
         }
@@ -474,12 +470,18 @@ void ParseArithImmToAcc(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) 
         uint16_t data = (high << 8) | low;
 
         AsmWriterEmit(writer, "ax, ");
-        AsmWriterEmitBits16(writer, data, false);
+        AsmWriterEmitBits16(writer, data, true);
     } else {
         uint8_t data = ByteCursorPop(cursor);
         AsmWriterEmit(writer, "al, ");
-        AsmWriterEmitBits8(writer, data, false);
+        AsmWriterEmitBits8(writer, data, true);
     }
+}
+
+void ParseArithMemOrReg(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
+    ParseArithOpSymbol(cursor, writer, op_code);
+    // TODO: Dumb that I need to pass empty string here, change this later.
+    ParseBinaryOp(cursor, writer, op_code, "");
 }
 
 int main(int argc, char* argv[]) {
@@ -509,12 +511,24 @@ int main(int argc, char* argv[]) {
             case 0x00:
             case 0x01:
             case 0x02:
-            case 0x03: {
-                ParseAddMemOrReg(&cursor, &writer, op_code);
+            case 0x03:
+            case 0x28:
+            case 0x29:
+            case 0x2A:
+            case 0x2B:
+            case 0x38:
+            case 0x39:
+            case 0x3A:
+            case 0x3B: {
+                ParseArithMemOrReg(&cursor, &writer, op_code);
                 break;
             }
             case 0x04:
-            case 0x05: {
+            case 0x05:
+            case 0x2C:
+            case 0x2D:
+            case 0x3C:
+            case 0x3D: {
                 ParseArithImmToAcc(&cursor, &writer, op_code);
                 break;
             }
