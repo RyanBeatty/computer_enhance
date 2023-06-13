@@ -20,6 +20,7 @@ void __attribute__((noinline)) breakpoint() {}
 
 #define W_MASK(byte) ((byte)&0b00000001)
 #define D_MASK(byte) (((byte)&0b00000010) >> 1)
+#define S_MASK(byte) D_MASK((byte))
 #define REG_MASK(byte) (((byte)&0b00111000) >> 3)
 #define R_M_MASK(byte) ((byte)&0b00000111)
 #define MOD_MASK(byte) (((byte)&0b11000000))
@@ -347,7 +348,7 @@ void ParseRM(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, uint8_t byt
     }
 }
 
-void ParseIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
+void ParseMovIm8ToReg(ByteCursor* cursor, AsmWriter* writer, const char* reg) {
     uint8_t byte = ByteCursorPop(cursor);
     AsmWriterEmit(writer, "mov ");
     AsmWriterEmit(writer, reg);
@@ -382,7 +383,9 @@ void ParseBinaryOp(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, const
 
 void ParseMov(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) { ParseBinaryOp(cursor, writer, op_code, "mov"); }
 
-void ParseAdd(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) { ParseBinaryOp(cursor, writer, op_code, "add"); }
+void ParseAddMemOrReg(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
+    ParseBinaryOp(cursor, writer, op_code, "add");
+}
 
 void ParseMemStore(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code, bool parse_word) {
     uint8_t mem_byte = ByteCursorPop(cursor);
@@ -421,6 +424,45 @@ void ParseAccLoadStore(ByteCursor* cursor, AsmWriter* writer, const char* reg, b
     }
 }
 
+void ParseArithImmToMemOrReg(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
+    const char* arith_op = NULL;
+    uint8_t next_byte = ByteCursorPop(cursor);
+    uint8_t extended_op_code = REG_MASK(next_byte);
+    switch (extended_op_code) {
+        case 0x00: {
+            arith_op = "add";
+            break;
+        }
+        // case 0x05: {
+        //     arith_op = "sub";
+        //     break;
+        // }
+        // case 0x07: {
+        //     arith_op = "cmp";
+        //     break;
+        // }
+        default: {
+            ParserError(writer, "Unknown extended arithmetic op code %x\n", extended_op_code);
+        }
+    }
+
+    AsmWriterEmit(writer, arith_op);
+    AsmWriterEmit(writer, " ");
+    ParseRM(cursor, writer, op_code, next_byte);
+    AsmWriterEmit(writer, ", ");
+    uint8_t s = S_MASK(op_code);
+    if (!s && W_MASK(op_code)) {
+        uint8_t low = ByteCursorPop(cursor);
+        uint8_t high = ByteCursorPop(cursor);
+        uint16_t data = (high << 8) | low;
+        AsmWriterEmitBits16(writer, data, true);
+    } else {
+        breakpoint();
+        uint8_t data = ByteCursorPop(cursor);
+        AsmWriterEmitBits8(writer, data, s);
+    }
+}
+
 int main(int argc, char* argv[]) {
     char* input_filename = NULL;
     switch (argc) {
@@ -449,7 +491,7 @@ int main(int argc, char* argv[]) {
             case 0x01:
             case 0x02:
             case 0x03: {
-                ParseAdd(&cursor, &writer, op_code);
+                ParseAddMemOrReg(&cursor, &writer, op_code);
                 break;
             }
             case 0xA1: {
@@ -460,6 +502,11 @@ int main(int argc, char* argv[]) {
                 ParseAccLoadStore(&cursor, &writer, "ax", false);
                 break;
             }
+            case 0x80:
+            case 0x83: {
+                ParseArithImmToMemOrReg(&cursor, &writer, op_code);
+                break;
+            }
             case 0x88:
             case 0x89:
             case 0x8A:
@@ -468,35 +515,35 @@ int main(int argc, char* argv[]) {
                 break;
             }
             case 0xB0: {
-                ParseIm8ToReg(&cursor, &writer, "al");
+                ParseMovIm8ToReg(&cursor, &writer, "al");
                 break;
             }
             case 0xB1: {
-                ParseIm8ToReg(&cursor, &writer, "cl");
+                ParseMovIm8ToReg(&cursor, &writer, "cl");
                 break;
             }
             case 0xB2: {
-                ParseIm8ToReg(&cursor, &writer, "dl");
+                ParseMovIm8ToReg(&cursor, &writer, "dl");
                 break;
             }
             case 0xB3: {
-                ParseIm8ToReg(&cursor, &writer, "bl");
+                ParseMovIm8ToReg(&cursor, &writer, "bl");
                 break;
             }
             case 0xB4: {
-                ParseIm8ToReg(&cursor, &writer, "ah");
+                ParseMovIm8ToReg(&cursor, &writer, "ah");
                 break;
             }
             case 0xB5: {
-                ParseIm8ToReg(&cursor, &writer, "ch");
+                ParseMovIm8ToReg(&cursor, &writer, "ch");
                 break;
             }
             case 0xB6: {
-                ParseIm8ToReg(&cursor, &writer, "dh");
+                ParseMovIm8ToReg(&cursor, &writer, "dh");
                 break;
             }
             case 0xB7: {
-                ParseIm8ToReg(&cursor, &writer, "bh");
+                ParseMovIm8ToReg(&cursor, &writer, "bh");
                 break;
             }
             case 0xB8: {

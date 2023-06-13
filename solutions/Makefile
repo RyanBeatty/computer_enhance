@@ -50,6 +50,13 @@ scratch: $(BUILD_DIR)/$(TARGET_EXEC)
 	nasm ../perfaware/part1/bt_scratch.asm -o $(BUILD_DIR)/scratch
 	gdb -ex run --args $(BUILD_DIR)/$(TARGET_EXEC) $(BUILD_DIR)/scratch
 
+test: $(BUILD_DIR)/$(TARGET_EXEC)
+	./test.sh 37
+	./test.sh 38
+	./test.sh 39
+	./test.sh 40
+	./test.sh 41
+
 # Include the .d makefiles. The - at the front suppresses the errors of missing
 # Makefiles. Initially, all the .d files will be missing, and we don't want those
 # errors to show up.
