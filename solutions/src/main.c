@@ -87,7 +87,7 @@ void AsmWriterEmitHeader(AsmWriter* writer, char* filename) {
 void AsmWriterEmitBits8(AsmWriter* writer, uint8_t bits, bool is_signed) {
     char str[9];
     // If we are signed, then we are to emit the sign of the number.
-    const char* fmt = is_signed ? "%+hhd" : "+ %hhu";
+    const char* fmt = is_signed ? "%+hhd" : "%hhu";
     sprintf(str, fmt, bits);
     AsmWriterEmit(writer, str);
 }
@@ -95,7 +95,7 @@ void AsmWriterEmitBits8(AsmWriter* writer, uint8_t bits, bool is_signed) {
 void AsmWriterEmitBits16(AsmWriter* writer, uint16_t bits, bool is_signed) {
     char str[17];
     // If we are signed, then we are to emit the sign of the number.
-    const char* fmt = is_signed ? "%+hd" : "+ %hu";
+    const char* fmt = is_signed ? "%+hd" : "%hu";
     sprintf(str, fmt, bits);
     AsmWriterEmit(writer, str);
 }
@@ -424,13 +424,11 @@ void ParseAccLoadStore(ByteCursor* cursor, AsmWriter* writer, const char* reg, b
     }
 }
 
-void ParseArithImmToMemOrReg(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
-    const char* arith_op = NULL;
-    uint8_t next_byte = ByteCursorPop(cursor);
-    uint8_t extended_op_code = REG_MASK(next_byte);
+void ParseArithOpSymbol(ByteCursor* cursor, AsmWriter* writer, uint8_t byte) {
+    uint8_t extended_op_code = REG_MASK(byte);
     switch (extended_op_code) {
         case 0x00: {
-            arith_op = "add";
+            AsmWriterEmit(writer, "add");
             break;
         }
         // case 0x05: {
@@ -445,8 +443,12 @@ void ParseArithImmToMemOrReg(ByteCursor* cursor, AsmWriter* writer, uint8_t op_c
             ParserError(writer, "Unknown extended arithmetic op code %x\n", extended_op_code);
         }
     }
+}
 
-    AsmWriterEmit(writer, arith_op);
+void ParseArithImmToMemOrReg(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
+    uint8_t next_byte = ByteCursorPop(cursor);
+    ParseArithOpSymbol(cursor, writer, next_byte);
+
     AsmWriterEmit(writer, " ");
     ParseRM(cursor, writer, op_code, next_byte);
     AsmWriterEmit(writer, ", ");
@@ -457,9 +459,26 @@ void ParseArithImmToMemOrReg(ByteCursor* cursor, AsmWriter* writer, uint8_t op_c
         uint16_t data = (high << 8) | low;
         AsmWriterEmitBits16(writer, data, true);
     } else {
-        breakpoint();
         uint8_t data = ByteCursorPop(cursor);
         AsmWriterEmitBits8(writer, data, s);
+    }
+}
+
+void ParseArithImmToAcc(ByteCursor* cursor, AsmWriter* writer, uint8_t op_code) {
+    ParseArithOpSymbol(cursor, writer, op_code);
+
+    AsmWriterEmit(writer, " ");
+    if (W_MASK(op_code)) {
+        uint8_t low = ByteCursorPop(cursor);
+        uint8_t high = ByteCursorPop(cursor);
+        uint16_t data = (high << 8) | low;
+
+        AsmWriterEmit(writer, "ax, ");
+        AsmWriterEmitBits16(writer, data, false);
+    } else {
+        uint8_t data = ByteCursorPop(cursor);
+        AsmWriterEmit(writer, "al, ");
+        AsmWriterEmitBits8(writer, data, false);
     }
 }
 
@@ -492,6 +511,11 @@ int main(int argc, char* argv[]) {
             case 0x02:
             case 0x03: {
                 ParseAddMemOrReg(&cursor, &writer, op_code);
+                break;
+            }
+            case 0x04:
+            case 0x05: {
+                ParseArithImmToAcc(&cursor, &writer, op_code);
                 break;
             }
             case 0xA1: {
