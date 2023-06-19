@@ -3,10 +3,12 @@ TARGET_EXEC := main
 
 BUILD_DIR := ./build
 SRC_DIRS := ./src
+LIB_DIR := ./libs
+SIM86_DIR := ../perfaware/sim86
 
 LIBS := ""
 LDFLAGS := $(shell pkg-config --cflags --libs $(LIBS))
-LDFLAGS := $(LDFLAGS) -lm
+LDFLAGS := $(LDFLAGS) -lm -lsim86 -L$(LIB_DIR)/sim86/
 
 # Find all the C and C++ files we want to compile
 # Note the single quotes around the * expressions. Make will incorrectly expand these otherwise.
@@ -39,7 +41,7 @@ $(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
 # Build step for C source
 $(BUILD_DIR)/%.c.o: %.c
 	mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(BTFLAGS) -c $< -o $@ $(LDFLAGS)
+	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH):$(LIBS)/sim86/" $(CC) $(CPPFLAGS) $(CFLAGS) $(BTFLAGS) -c $< -o $@ $(LDFLAGS)
 
 
 .PHONY: clean
@@ -56,6 +58,19 @@ test: $(BUILD_DIR)/$(TARGET_EXEC)
 	./test.sh 39
 	./test.sh 40
 	./test.sh 41
+
+# Instructions for building were taken from comments on using decoder as shared lib post.
+# Had to modify sim86_shared.h slightly to get it to compile with C.
+sim86:
+	mkdir -p $(LIB_DIR)/sim86; \
+	cd $(SIM86_DIR); \
+	pwd; \
+	clang++ -c -fPIC -o sim86_shared.o sim86_lib.cpp; \
+	clang++ -shared sim86_shared.o -o libsim86.so;
+	
+	cp $(SIM86_DIR)/libsim86.so $(LIB_DIR)/sim86/;
+	# sudo cp $(SIM86_DIR)/libsim86.so /usr/local/lib/libsim86.so
+	# cp $(SIM86_DIR)/shared/sim86_shared.h $(LIB_DIR)/sim86/;
 
 # Include the .d makefiles. The - at the front suppresses the errors of missing
 # Makefiles. Initially, all the .d files will be missing, and we don't want those
