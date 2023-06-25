@@ -8,7 +8,7 @@ SIM86_DIR := ../perfaware/sim86
 
 LIBS := ""
 LDFLAGS := $(shell pkg-config --cflags --libs $(LIBS))
-LDFLAGS := $(LDFLAGS) -lm -lsim86 -L$(LIB_DIR)/sim86/
+LDFLAGS := $(LDFLAGS) -lm -lsim86 -L/usr/local/lib/sim86/
 
 # Find all the C and C++ files we want to compile
 # Note the single quotes around the * expressions. Make will incorrectly expand these otherwise.
@@ -41,7 +41,7 @@ $(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
 # Build step for C source
 $(BUILD_DIR)/%.c.o: %.c
 	mkdir -p $(dir $@)
-	LD_LIBRARY_PATH="$(LD_LIBRARY_PATH):$(LIBS)/sim86/" $(CC) $(CPPFLAGS) $(CFLAGS) $(BTFLAGS) -c $< -o $@ $(LDFLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(BTFLAGS) -c $< -o $@ $(LDFLAGS)
 
 
 .PHONY: clean
@@ -68,8 +68,8 @@ sim86:
 	clang++ -c -fPIC -o sim86_shared.o sim86_lib.cpp; \
 	clang++ -shared sim86_shared.o -o libsim86.so;
 	
-	cp $(SIM86_DIR)/libsim86.so $(LIB_DIR)/sim86/;
-	# sudo cp $(SIM86_DIR)/libsim86.so /usr/local/lib/libsim86.so
+	#cp $(SIM86_DIR)/libsim86.so $(LIB_DIR)/sim86/;
+	sudo cp $(SIM86_DIR)/libsim86.so /usr/local/lib/libsim86.so
 	# cp $(SIM86_DIR)/shared/sim86_shared.h $(LIB_DIR)/sim86/;
 
 # Include the .d makefiles. The - at the front suppresses the errors of missing
