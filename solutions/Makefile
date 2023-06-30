@@ -69,6 +69,7 @@ sim86:
 	clang++ -shared sim86_shared.o -o libsim86.so;
 	
 	#cp $(SIM86_DIR)/libsim86.so $(LIB_DIR)/sim86/;
+	# Also need to add /usr/local/lib to /etc/ld.so.conf and run ldconfig again
 	sudo cp $(SIM86_DIR)/libsim86.so /usr/local/lib/libsim86.so
 	# cp $(SIM86_DIR)/shared/sim86_shared.h $(LIB_DIR)/sim86/;
 
