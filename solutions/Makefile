@@ -59,6 +59,9 @@ test: $(BUILD_DIR)/$(TARGET_EXEC)
 	./test.sh 40
 	./test.sh 41
 
+test_simstate: $(BUILD_DIR)/$(TARGET_EXEC)
+	./test.sh 43 simstate
+
 # Instructions for building were taken from comments on using decoder as shared lib post.
 # Had to modify sim86_shared.h slightly to get it to compile with C.
 sim86:

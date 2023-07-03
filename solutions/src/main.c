@@ -1,6 +1,7 @@
 #include "sim86_shared.h"
 // hello world
 
+#include <getopt.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -165,38 +166,86 @@ void PrintSim86RegStateDiff(Sim86RegState old, Sim86RegState new, FILE* stream) 
         if (old_value != new_value) {
             register_access access = {.Index = i, .Offset = 0, .Count = 2};
             const char* reg_name = Sim86_RegisterNameFromOperand(&access);
-            fprintf(stream, " ; %s:0x%x->0x%x", reg_name, old_value, new_value);
+            fprintf(stream, " ; %s:0x%x->0x%x ", reg_name, old_value, new_value);
             break;
         }
     }
 }
 
-int main(int argc, char* argv[]) {
-    char* input_filename = NULL;
-    switch (argc) {
-        case 2: {
-            input_filename = argv[1];
-            break;
-        }
-        default: {
-            fprintf(stderr, "USAGE: ./main <input_filename>\n");
-            exit(EXIT_FAILURE);
+void PrintSim86RegStateFinal(Sim86RegState reg_state, FILE* stream) {
+    fprintf(stream, "Final registers:\n");
+    size_t len = sizeof(reg_state.registers) / sizeof(reg_state.registers[0]);
+    for (size_t i = 1; i < len; ++i) {
+        register_access access = {.Count = 2, .Index = i, .Offset = 0};
+        const char* reg_name = Sim86_RegisterNameFromOperand(&access);
+        uint16_t value = reg_state.registers[i];
+        fprintf(stream, "%8s: 0x%04x (%u)\n", reg_name, value, value);
+    }
+    fprintf(stream, "\n");
+}
+
+typedef enum Sim86Flags { Sim86Flags_Sim_State = 0x01 } Sim86Flags;
+
+uint32_t ParseCommandLineArgs(int argc, char* argv[], char** input_filename) {
+    uint32_t flags = 0;
+    int c;
+
+    while (1) {
+        static struct option long_options[] = {/* These options set a flag. */
+                                               /* These options don’t set a flag.
+                                                  We distinguish them by their indices. */
+                                               {"simstate", no_argument, 0, 's'},
+                                               {0, 0, 0, 0}};
+        /* getopt_long stores the option index here. */
+        int option_index = 0;
+
+        c = getopt_long(argc, argv, "s", long_options, &option_index);
+
+        /* Detect the end of the options. */
+        if (c == -1) break;
+
+        switch (c) {
+            case 0:
+                Assert(false);
+                // /* If this option set a flag, do nothing else now. */
+                // if (long_options[option_index].flag != 0) break;
+                // printf("option %s", long_options[option_index].name);
+                // if (optarg) printf(" with arg %s", optarg);
+                // printf("\n");
+                break;
+
+            case 's':
+                flags |= Sim86Flags_Sim_State;
+                break;
+
+            case '?':
+                /* getopt_long already printed an error message. */
+                fprintf(stderr, "Unknown option\n");
+                exit(EXIT_FAILURE);
+                break;
+
+            default:
+                abort();
         }
     }
+
+    /* Print any remaining command line arguments (not options). */
+    if (optind + 1 == argc) {
+        *input_filename = argv[optind];
+    } else {
+        fprintf(stderr, "USAGE: ./main [OPTIONS...] <input_filename>\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return flags;
+}
+
+int main(int argc, char* argv[]) {
+    char* input_filename = NULL;
+    uint32_t flags = ParseCommandLineArgs(argc, argv, &input_filename);
 
     size_t buffer_length = 0;
     uint8_t* disassembly = ReadFile(input_filename, &buffer_length);
-
-    uint32_t Version = Sim86_GetVersion();
-    printf("; Sim86 Version: %u (expected %u)\n", Version, SIM86_VERSION);
-    if (Version != SIM86_VERSION) {
-        printf("ERROR: Header file version doesn't match DLL.\n");
-        return -1;
-    }
-
-    instruction_table Table;
-    Sim86_Get8086InstructionTable(&Table);
-    printf("; 8086 Instruction Instruction Encoding Count: %u\n", Table.EncodingCount);
 
     Sim86State state;
     Sim86State_Init(&state);
@@ -210,7 +259,8 @@ int main(int argc, char* argv[]) {
             Offset += Decoded.Size;
             Sim86State_SimulateInstruction(&state, Decoded);
             PrintInstruction(Decoded, stdout);
-            if (true) {
+            breakpoint();
+            if (flags & Sim86Flags_Sim_State) {
                 PrintSim86RegStateDiff(register_state_old, state.register_state, stdout);
             }
             printf("\n");
@@ -219,6 +269,11 @@ int main(int argc, char* argv[]) {
             break;
         }
         register_state_old = state.register_state;
+    }
+    printf("\n");
+
+    if (flags & Sim86Flags_Sim_State) {
+        PrintSim86RegStateFinal(state.register_state, stdout);
     }
 
     return 0;
