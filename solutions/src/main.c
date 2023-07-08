@@ -104,10 +104,7 @@ typedef struct Sim86State {
 
 void Sim86State_Init(Sim86State* state) { memset(state, 0, sizeof(Sim86State)); }
 
-void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
-    Assert(instr.Op == Op_mov);
-
-    instruction_operand source = instr.Operands[1];
+uint16_t Sim86State_Load(Sim86State* state, instruction_operand source) {
     uint8_t vals[2];
     switch (source.Type) {
         case Operand_Immediate: {
@@ -125,8 +122,8 @@ void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
             uint8_t* reg_ptr = (uint8_t*)&register_state->registers[reg.Index];
             // Offset our base address if we are only addressing the high portion of the register.
             reg_ptr += reg.Offset;
-            for (size_t i = 0; i < reg.Count; ++i, ++reg_ptr) {
-                vals[i] = *reg_ptr;
+            for (size_t i = 0; i < reg.Count; ++i) {
+                vals[i] = reg_ptr[i];
             }
             break;
         }
@@ -136,7 +133,16 @@ void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
         }
     }
 
-    instruction_operand dest = instr.Operands[0];
+    uint16_t value = 0;
+    value |= vals[0];
+    value |= vals[1] << 8;
+    return value;
+}
+
+void Sim86State_Store(Sim86State* state, instruction_operand dest, uint16_t value) {
+    uint8_t vals[2];
+    vals[0] = value;
+    vals[1] = value >> 8;
     switch (dest.Type) {
         case Operand_Register: {
             // TODO: Coalesce with loading values from registers.
@@ -147,8 +153,8 @@ void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
             uint8_t* reg_ptr = (uint8_t*)&register_state->registers[reg.Index];
             // Offset our base address if we are only addressing the high portion of the register.
             reg_ptr += reg.Offset;
-            for (size_t i = 0; i < reg.Count; ++i, ++reg_ptr) {
-                *reg_ptr = vals[i];
+            for (size_t i = 0; i < reg.Count; ++i) {
+                reg_ptr[i] = vals[i];
             }
             break;
         }
@@ -157,6 +163,15 @@ void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
             exit(EXIT_FAILURE);
         }
     }
+}
+
+void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
+    Assert(instr.Op == Op_mov);
+
+    instruction_operand source = instr.Operands[1];
+    instruction_operand dest = instr.Operands[0];
+    uint16_t value = Sim86State_Load(state, source);
+    Sim86State_Store(state, dest, value);
 }
 
 void Sim86State_SimulateInstruction(Sim86State* state, instruction instruction) {
