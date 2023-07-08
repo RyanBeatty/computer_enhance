@@ -116,8 +116,21 @@ void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
             vals[1] = imm.Value >> 8;
             break;
         }
+        case Operand_Register: {
+            // TODO: Coalesce with storing values into registers.
+            register_access reg = source.Register;
+            Sim86RegState* register_state = &state->register_state;
+            // Find the base address of the register we are storing into.
+            uint8_t* reg_ptr = (uint8_t*)&register_state->registers[reg.Index];
+            // Offset our base address if we are only addressing the high portion of the register.
+            reg_ptr += reg.Offset;
+            for (size_t i = 0; i < reg.Count; ++i, ++reg_ptr) {
+                vals[i] = *reg_ptr;
+            }
+            break;
+        }
         default: {
-            fprintf(stderr, "Uknown source operand type: %d!\n", source.Type);
+            fprintf(stderr, "Unknown source operand type: %d!\n", source.Type);
             exit(EXIT_FAILURE);
         }
     }
@@ -125,6 +138,7 @@ void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
     instruction_operand dest = instr.Operands[0];
     switch (dest.Type) {
         case Operand_Register: {
+            // TODO: Coalesce with loading values from registers.
             register_access reg = dest.Register;
             Sim86RegState* register_state = &state->register_state;
             // Find the base address of the register we are storing into.

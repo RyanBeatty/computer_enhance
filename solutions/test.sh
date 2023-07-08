@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 FILENAME=$(find ../perfaware/part1/ -not -name "*.asm" -not -name "*.txt" -not -name "*.cpp" -name "*$1*")
+echo "Tesing $FILENAME"
 
 if [ ${2-default} == "default" ]
 then
