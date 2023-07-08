@@ -10,12 +10,12 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
-#define Assert(expr)      \
-    {                     \
-        if (!(expr)) {    \
-            breakpoint(); \
-            assert(0);    \
-        }                 \
+#define Assert(expr)        \
+    {                       \
+        if (!(expr)) {      \
+            breakpoint();   \
+            assert((expr)); \
+        }                   \
     }
 
 void __attribute__((noinline)) breakpoint() {}
@@ -93,7 +93,7 @@ void PrintInstruction(instruction instruction, FILE* stream) {
 
 typedef struct Sim86RegState {
     // Shared sim appears to start indexing at 1;
-    uint16_t registers[9];
+    uint16_t registers[14];
 } Sim86RegState;
 
 void Sim86RegState_Init(Sim86RegState* state) { memset(state, 0, sizeof(Sim86RegState)); }
@@ -121,6 +121,7 @@ void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
             register_access reg = source.Register;
             Sim86RegState* register_state = &state->register_state;
             // Find the base address of the register we are storing into.
+            Assert(reg.Index < (sizeof(register_state->registers) / sizeof(register_state->registers[0])));
             uint8_t* reg_ptr = (uint8_t*)&register_state->registers[reg.Index];
             // Offset our base address if we are only addressing the high portion of the register.
             reg_ptr += reg.Offset;
@@ -142,6 +143,7 @@ void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
             register_access reg = dest.Register;
             Sim86RegState* register_state = &state->register_state;
             // Find the base address of the register we are storing into.
+            Assert(reg.Index < (sizeof(register_state->registers) / sizeof(register_state->registers[0])));
             uint8_t* reg_ptr = (uint8_t*)&register_state->registers[reg.Index];
             // Offset our base address if we are only addressing the high portion of the register.
             reg_ptr += reg.Offset;
@@ -193,7 +195,9 @@ void PrintSim86RegStateFinal(Sim86RegState reg_state, FILE* stream) {
         register_access access = {.Count = 2, .Index = i, .Offset = 0};
         const char* reg_name = Sim86_RegisterNameFromOperand(&access);
         uint16_t value = reg_state.registers[i];
-        fprintf(stream, "%8s: 0x%04x (%u)\n", reg_name, value, value);
+        if (value) {
+            fprintf(stream, "%8s: 0x%04x (%u)\n", reg_name, value, value);
+        }
     }
     fprintf(stream, "\n");
 }
@@ -273,7 +277,6 @@ int main(int argc, char* argv[]) {
             Offset += Decoded.Size;
             Sim86State_SimulateInstruction(&state, Decoded);
             PrintInstruction(Decoded, stdout);
-            breakpoint();
             if (flags & Sim86Flags_Sim_State) {
                 PrintSim86RegStateDiff(register_state_old, state.register_state, stdout);
             }
