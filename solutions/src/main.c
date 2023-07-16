@@ -33,63 +33,8 @@ uint8_t* ReadFile(char* input_filename, size_t* buffer_length) {
     return buffer;
 }
 
-void PrintRegisterAccess(register_access reg, FILE* stream) {
-    // TODO: I think both of these are for the internals of the decoder. Seemed to mostly be used when convertint to the
-    // reg name. Assert(!reg.Count); Assert(!reg.Offset);
-    const char* reg_name = Sim86_RegisterNameFromOperand(&reg);
-    fprintf(stream, "%s", reg_name);
-}
-
-void PrintMemoryAccess(effective_address_expression address, FILE* stream) {
-    fprintf(stream, "[");
-    PrintRegisterAccess(address.Terms[0].Register, stream);
-    if (address.Terms[1].Register.Index) {
-        fprintf(stream, " + ");
-        PrintRegisterAccess(address.Terms[1].Register, stream);
-    }
-    if (address.Displacement) {
-        const char sign = address.Displacement >= 0 ? '+' : '-';
-        fprintf(stream, " %c ", sign);
-        fprintf(stream, "%" PRId32 "", address.Displacement);
-    }
-    fprintf(stream, "]");
-}
-
-void PrintOperand(instruction_operand operand, FILE* stream) {
-    switch (operand.Type) {
-        case Operand_None: {
-            break;
-        }
-        case Operand_Register: {
-            PrintRegisterAccess(operand.Register, stream);
-            break;
-        }
-        case Operand_Memory: {
-            PrintMemoryAccess(operand.Address, stream);
-            break;
-        }
-        case Operand_Immediate: {
-            immediate imm = operand.Immediate;
-            Assert(imm.Flags == 0);
-            fprintf(stream, "%" PRId32 "", imm.Value);
-            break;
-        }
-        default: {
-            fprintf(stderr, "Unknown or None operand type: %d\n", operand.Type);
-            exit(EXIT_FAILURE);
-        }
-    }
-}
-
-void PrintInstruction(instruction instruction, FILE* stream) {
-    const char* op = Sim86_MnemonicFromOperationType(instruction.Op);
-    fprintf(stream, "%s ", op);
-    PrintOperand(instruction.Operands[0], stream);
-    if (instruction.Operands[1].Type) {
-        fprintf(stream, ", ");
-    }
-    PrintOperand(instruction.Operands[1], stream);
-}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Execution.
 
 typedef enum FlagsRegisterBit {
     FLAG_CF = (1 << 0),   // Carry
@@ -128,17 +73,19 @@ typedef union Sim86RegState {
 
 } Sim86RegState;
 
+#define FLAGS_REGISTER_INDEX 14
+
 void Sim86RegState_Init(Sim86RegState* state) { memset(state, 0, sizeof(Sim86RegState)); }
 void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value) {
-    uint16_t flag_state = (FLAG_PF | FLAG_ZF | FLAG_CF);
-    flag_state &= value == 0 ? FLAG_ZF : 0;
-    flag_state &= (value & 0b1000000000000000) != 0 ? FLAG_CF : 0;
+    uint16_t flag_state = 0;
+    flag_state |= value == 0 ? FLAG_ZF : 0;
+    flag_state |= (value & 0b1000000000000000) != 0 ? FLAG_CF : 0;
 
     uint8_t bit_set_count = 0;
-    for (size_t i = 0; i < 16; ++i) {
-        bit_set_count += (value >> i) & 1;
+    for (size_t mask = 1; mask < 256; mask <<= 1) {
+        bit_set_count += (value & mask) != 0;
     }
-    flag_state &= (bit_set_count % 2 == 0) ? FLAG_PF : 0;
+    flag_state |= (bit_set_count % 2 == 0) ? FLAG_PF : 0;
 
     register_state->flags = flag_state;
 }
@@ -270,35 +217,6 @@ void Sim86State_SimulateInstruction(Sim86State* state, instruction instruction) 
     }
 }
 
-void PrintSim86RegStateDiff(Sim86RegState old, Sim86RegState new, FILE* stream) {
-    size_t len = sizeof(new.registers) / sizeof(new.registers[0]);
-    for (size_t i = 0; i < len; ++i) {
-        uint16_t old_value = old.registers[i];
-        uint16_t new_value = new.registers[i];
-        // Each instruction can only modify one full register, so stop once we've printed this out.
-        if (old_value != new_value) {
-            register_access access = {.Index = i, .Offset = 0, .Count = 2};
-            const char* reg_name = Sim86_RegisterNameFromOperand(&access);
-            fprintf(stream, " ; %s:0x%x->0x%x ", reg_name, old_value, new_value);
-            break;
-        }
-    }
-}
-
-void PrintSim86RegStateFinal(Sim86RegState reg_state, FILE* stream) {
-    fprintf(stream, "Final registers:\n");
-    size_t len = sizeof(reg_state.registers) / sizeof(reg_state.registers[0]);
-    for (size_t i = 1; i < len; ++i) {
-        register_access access = {.Count = 2, .Index = i, .Offset = 0};
-        const char* reg_name = Sim86_RegisterNameFromOperand(&access);
-        uint16_t value = reg_state.registers[i];
-        if (value) {
-            fprintf(stream, "%8s: 0x%04x (%u)\n", reg_name, value, value);
-        }
-    }
-    fprintf(stream, "\n");
-}
-
 typedef enum Sim86Flags { Sim86Flags_Sim_State = 0x01 } Sim86Flags;
 
 uint32_t ParseCommandLineArgs(int argc, char* argv[], char** input_filename) {
@@ -353,6 +271,140 @@ uint32_t ParseCommandLineArgs(int argc, char* argv[], char** input_filename) {
     }
 
     return flags;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Output Printing.
+
+void PrintRegisterAccess(register_access reg, FILE* stream) {
+    // TODO: I think both of these are for the internals of the decoder. Seemed to mostly be used when convertint to the
+    // reg name. Assert(!reg.Count); Assert(!reg.Offset);
+    const char* reg_name = Sim86_RegisterNameFromOperand(&reg);
+    fprintf(stream, "%s", reg_name);
+}
+
+void PrintMemoryAccess(effective_address_expression address, FILE* stream) {
+    fprintf(stream, "[");
+    PrintRegisterAccess(address.Terms[0].Register, stream);
+    if (address.Terms[1].Register.Index) {
+        fprintf(stream, " + ");
+        PrintRegisterAccess(address.Terms[1].Register, stream);
+    }
+    if (address.Displacement) {
+        const char sign = address.Displacement >= 0 ? '+' : '-';
+        fprintf(stream, " %c ", sign);
+        fprintf(stream, "%" PRId32 "", address.Displacement);
+    }
+    fprintf(stream, "]");
+}
+
+void PrintOperand(instruction_operand operand, FILE* stream) {
+    switch (operand.Type) {
+        case Operand_None: {
+            break;
+        }
+        case Operand_Register: {
+            PrintRegisterAccess(operand.Register, stream);
+            break;
+        }
+        case Operand_Memory: {
+            PrintMemoryAccess(operand.Address, stream);
+            break;
+        }
+        case Operand_Immediate: {
+            immediate imm = operand.Immediate;
+            Assert(imm.Flags == 0);
+            fprintf(stream, "%" PRId32 "", imm.Value);
+            break;
+        }
+        default: {
+            fprintf(stderr, "Unknown or None operand type: %d\n", operand.Type);
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+void PrintInstruction(instruction instruction, FILE* stream) {
+    const char* op = Sim86_MnemonicFromOperationType(instruction.Op);
+    fprintf(stream, "%s ", op);
+    PrintOperand(instruction.Operands[0], stream);
+    if (instruction.Operands[1].Type) {
+        fprintf(stream, ", ");
+    }
+    PrintOperand(instruction.Operands[1], stream);
+}
+
+void PrintSim86RegStateFlags(uint16_t flags, FILE* stream) {
+    for (size_t i = FLAG_CF; i <= FLAG_OF; i <<= 1) {
+        if (flags & i) {
+            char c = '\0';
+            switch (i) {
+                case FLAG_CF: {
+                    c = 'S';
+                    break;
+                }
+                case FLAG_ZF: {
+                    c = 'Z';
+                    break;
+                }
+                case FLAG_PF: {
+                    c = 'P';
+                    break;
+                }
+                default: {
+                    fprintf(stderr, "Uknown Flag bit while printing %ld\n", i);
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            fprintf(stream, "%c", c);
+        }
+    }
+}
+
+void PrintSim86RegStateDiff(Sim86RegState old, Sim86RegState new, FILE* stream) {
+    fprintf(stream, " ;");
+
+    size_t len = sizeof(new.registers) / sizeof(new.registers[0]);
+    for (size_t i = 0; i < len; ++i) {
+        uint16_t old_value = old.registers[i];
+        uint16_t new_value = new.registers[i];
+        // Each instruction can only modify one full register, so stop once we've printed this out.
+        if (old_value != new_value) {
+            if (i == FLAGS_REGISTER_INDEX) {
+                fprintf(stream, " flags:");
+                PrintSim86RegStateFlags(old.flags, stream);
+                fprintf(stream, "->");
+                PrintSim86RegStateFlags(new.flags, stream);
+            } else {
+                register_access access = {.Index = i, .Offset = 0, .Count = 2};
+                const char* reg_name = Sim86_RegisterNameFromOperand(&access);
+                fprintf(stream, " %s:0x%x->0x%x", reg_name, old_value, new_value);
+            }
+        }
+    }
+
+    fprintf(stream, " ");
+}
+
+void PrintSim86RegStateFinal(Sim86RegState reg_state, FILE* stream) {
+    fprintf(stream, "Final registers:\n");
+    size_t len = sizeof(reg_state.registers) / sizeof(reg_state.registers[0]);
+    for (size_t i = 1; i < len; ++i) {
+        register_access access = {.Count = 2, .Index = i, .Offset = 0};
+        const char* reg_name = Sim86_RegisterNameFromOperand(&access);
+        uint16_t value = reg_state.registers[i];
+        if (value) {
+            fprintf(stream, "%8s: ", reg_name);
+            if (i == FLAGS_REGISTER_INDEX) {
+                PrintSim86RegStateFlags(value, stream);
+                fprintf(stream, "\n");
+            } else {
+                fprintf(stream, "0x%04x (%u)\n", value, value);
+            }
+        }
+    }
+    fprintf(stream, "\n");
 }
 
 int main(int argc, char* argv[]) {
