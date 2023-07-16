@@ -91,12 +91,57 @@ void PrintInstruction(instruction instruction, FILE* stream) {
     PrintOperand(instruction.Operands[1], stream);
 }
 
-typedef struct Sim86RegState {
-    // Shared sim appears to start indexing at 1;
-    uint16_t registers[14];
+typedef enum FlagsRegisterBit {
+    FLAG_CF = (1 << 0),   // Carry
+    FLAG_PF = (1 << 2),   // Parity
+    FLAG_AF = (1 << 4),   // Aux carry
+    FLAG_ZF = (1 << 6),   // Zero
+    FLAG_SF = (1 << 7),   // Sign
+    FLAG_TF = (1 << 8),   // Trap
+    FLAG_IF = (1 << 9),   // Interrupt
+    FLAG_DF = (1 << 10),  // Direction
+    FLAG_OF = (1 << 11),  // Overflow
+} FlagsRegisterBit;
+
+typedef union Sim86RegState {
+    struct {
+        uint16_t Zero;
+
+        uint16_t ax;
+        uint16_t bx;
+        uint16_t cx;
+        uint16_t dx;
+        uint16_t sp;
+        uint16_t bp;
+        uint16_t si;
+        uint16_t di;
+        uint16_t es;
+        uint16_t cs;
+        uint16_t ss;
+        uint16_t ds;
+        uint16_t ip;
+        uint16_t flags;
+    };
+
+    uint8_t u8[15][2];
+    uint16_t registers[15];
+
 } Sim86RegState;
 
 void Sim86RegState_Init(Sim86RegState* state) { memset(state, 0, sizeof(Sim86RegState)); }
+void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value) {
+    uint16_t flag_state = (FLAG_PF | FLAG_ZF | FLAG_CF);
+    flag_state &= value == 0 ? FLAG_ZF : 0;
+    flag_state &= (value & 0b1000000000000000) != 0 ? FLAG_CF : 0;
+
+    uint8_t bit_set_count = 0;
+    for (size_t i = 0; i < 16; ++i) {
+        bit_set_count += (value >> i) & 1;
+    }
+    flag_state &= (bit_set_count % 2 == 0) ? FLAG_PF : 0;
+
+    register_state->flags = flag_state;
+}
 
 typedef struct Sim86State {
     Sim86RegState register_state;
@@ -165,19 +210,56 @@ void Sim86State_Store(Sim86State* state, instruction_operand dest, uint16_t valu
     }
 }
 
-void Sim86State_SimulateMov(Sim86State* state, instruction instr) {
-    Assert(instr.Op == Op_mov);
-
+void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
     instruction_operand source = instr.Operands[1];
     instruction_operand dest = instr.Operands[0];
-    uint16_t value = Sim86State_Load(state, source);
-    Sim86State_Store(state, dest, value);
+    uint16_t source_value = Sim86State_Load(state, source);
+    uint16_t dest_value = Sim86State_Load(state, dest);
+    uint16_t result = 0;
+    bool should_store_result = true;
+    bool should_set_flags = false;
+    switch (instr.Op) {
+        case Op_mov: {
+            result = source_value;
+            break;
+        }
+        case Op_sub: {
+            result = dest_value - source_value;
+            should_set_flags = true;
+            break;
+        }
+        case Op_add: {
+            result = dest_value + source_value;
+            should_set_flags = true;
+            break;
+        }
+        case Op_cmp: {
+            result = dest_value - source_value;
+            should_store_result = false;
+            should_set_flags = true;
+            break;
+        }
+        default: {
+            const char* op_name = Sim86_MnemonicFromOperationType(instr.Op);
+            fprintf(stderr, "Unknown instruction type: %s\n", op_name);
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (should_set_flags) {
+        Sim86RegState_SetFlags(&state->register_state, result);
+    }
+    if (should_store_result) {
+        Sim86State_Store(state, dest, result);
+    }
 }
 
 void Sim86State_SimulateInstruction(Sim86State* state, instruction instruction) {
     switch (instruction.Op) {
-        case Op_mov: {
-            Sim86State_SimulateMov(state, instruction);
+        case Op_mov:
+        case Op_add:
+        case Op_sub:
+        case Op_cmp: {
+            Sim86State_SimulateBinaryOp(state, instruction);
             break;
         }
         default: {
