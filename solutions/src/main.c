@@ -76,7 +76,7 @@ typedef union Sim86RegState {
 #define FLAGS_REGISTER_INDEX 14
 
 void Sim86RegState_Init(Sim86RegState* state) { memset(state, 0, sizeof(Sim86RegState)); }
-void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value) {
+void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value, uint16_t af_flag) {
     uint16_t flag_state = 0;
     flag_state |= value == 0 ? FLAG_ZF : 0;
     flag_state |= (value & 0b1000000000000000) != 0 ? FLAG_CF : 0;
@@ -86,6 +86,9 @@ void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value) {
         bit_set_count += (value & mask) != 0;
     }
     flag_state |= (bit_set_count % 2 == 0) ? FLAG_PF : 0;
+
+    breakpoint();
+    flag_state |= af_flag ? FLAG_AF : 0;
 
     register_state->flags = flag_state;
 }
@@ -165,6 +168,7 @@ void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
     uint16_t result = 0;
     bool should_store_result = true;
     bool should_set_flags = false;
+    uint16_t af_flag = 0;
     switch (instr.Op) {
         case Op_mov: {
             result = source_value;
@@ -172,11 +176,13 @@ void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
         }
         case Op_sub: {
             result = dest_value - source_value;
+            af_flag = ((dest_value & 0xF) - (source_value & 0xF)) & 0x10;
             should_set_flags = true;
             break;
         }
         case Op_add: {
             result = dest_value + source_value;
+            af_flag = ((dest_value & 0xF) + (source_value & 0xF)) & 0x10;
             should_set_flags = true;
             break;
         }
@@ -193,7 +199,7 @@ void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
         }
     }
     if (should_set_flags) {
-        Sim86RegState_SetFlags(&state->register_state, result);
+        Sim86RegState_SetFlags(&state->register_state, result, af_flag);
     }
     if (should_store_result) {
         Sim86State_Store(state, dest, result);
@@ -351,8 +357,12 @@ void PrintSim86RegStateFlags(uint16_t flags, FILE* stream) {
                     c = 'P';
                     break;
                 }
+                case FLAG_AF: {
+                    c = 'A';
+                    break;
+                }
                 default: {
-                    fprintf(stderr, "Uknown Flag bit while printing %ld\n", i);
+                    fprintf(stderr, "Unknown Flag bit while printing %ld\n", i);
                     exit(EXIT_FAILURE);
                 }
             }
