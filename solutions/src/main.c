@@ -79,7 +79,7 @@ void Sim86RegState_Init(Sim86RegState* state) { memset(state, 0, sizeof(Sim86Reg
 void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value, uint16_t af_flag) {
     uint16_t flag_state = 0;
     flag_state |= value == 0 ? FLAG_ZF : 0;
-    flag_state |= (value & 0b1000000000000000) != 0 ? FLAG_CF : 0;
+    flag_state |= (value & 0b1000000000000000) != 0 ? FLAG_SF : 0;
 
     uint8_t bit_set_count = 0;
     for (size_t mask = 1; mask < 256; mask <<= 1) {
@@ -341,34 +341,33 @@ void PrintInstruction(instruction instruction, FILE* stream) {
 }
 
 void PrintSim86RegStateFlags(uint16_t flags, FILE* stream) {
-    for (size_t i = FLAG_CF; i <= FLAG_OF; i <<= 1) {
-        if (flags & i) {
-            char c = '\0';
-            switch (i) {
-                case FLAG_CF: {
-                    c = 'S';
-                    break;
-                }
-                case FLAG_ZF: {
-                    c = 'Z';
-                    break;
-                }
-                case FLAG_PF: {
-                    c = 'P';
-                    break;
-                }
-                case FLAG_AF: {
-                    c = 'A';
-                    break;
-                }
-                default: {
-                    fprintf(stderr, "Unknown Flag bit while printing %ld\n", i);
-                    exit(EXIT_FAILURE);
-                }
-            }
-
-            fprintf(stream, "%c", c);
-        }
+    // Copy from Casey since it seems like he does not print this out in flag enum order.
+    if (flags & FLAG_CF) {
+        fprintf(stream, "C");
+    }
+    if (flags & FLAG_PF) {
+        fprintf(stream, "P");
+    }
+    if (flags & FLAG_AF) {
+        fprintf(stream, "A");
+    }
+    if (flags & FLAG_ZF) {
+        fprintf(stream, "Z");
+    }
+    if (flags & FLAG_SF) {
+        fprintf(stream, "S");
+    }
+    if (flags & FLAG_TF) {
+        fprintf(stream, "T");
+    }
+    if (flags & FLAG_IF) {
+        fprintf(stream, "I");
+    }
+    if (flags & FLAG_DF) {
+        fprintf(stream, "D");
+    }
+    if (flags & FLAG_OF) {
+        fprintf(stream, "O");
     }
 }
 
