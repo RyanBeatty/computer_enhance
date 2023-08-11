@@ -76,7 +76,7 @@ typedef union Sim86RegState {
 #define FLAGS_REGISTER_INDEX 14
 
 void Sim86RegState_Init(Sim86RegState* state) { memset(state, 0, sizeof(Sim86RegState)); }
-void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value, uint16_t af_flag) {
+void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value, uint16_t af_flag, int32_t of_flag) {
     uint16_t flag_state = 0;
     flag_state |= value == 0 ? FLAG_ZF : 0;
     flag_state |= (value & 0b1000000000000000) != 0 ? FLAG_SF : 0;
@@ -87,8 +87,9 @@ void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value, uint1
     }
     flag_state |= (bit_set_count % 2 == 0) ? FLAG_PF : 0;
 
-    breakpoint();
     flag_state |= af_flag ? FLAG_AF : 0;
+
+    flag_state |= of_flag ? FLAG_OF : 0;
 
     register_state->flags = flag_state;
 }
@@ -163,33 +164,38 @@ void Sim86State_Store(Sim86State* state, instruction_operand dest, uint16_t valu
 void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
     instruction_operand source = instr.Operands[1];
     instruction_operand dest = instr.Operands[0];
-    uint16_t source_value = Sim86State_Load(state, source);
-    uint16_t dest_value = Sim86State_Load(state, dest);
-    uint16_t result = 0;
+    uint32_t source_value = Sim86State_Load(state, source);
+    uint32_t dest_value = Sim86State_Load(state, dest);
+    uint32_t width_mask = instr.Flags & Inst_Wide ? 0xFFFF : 0xFF;
+    uint32_t sign_bit = instr.Flags & Inst_Wide ? 0b1000000000000000 : 0b10000000;
+    uint32_t result = 0;
     bool should_store_result = true;
-    bool should_set_flags = false;
-    uint16_t af_flag = 0;
     switch (instr.Op) {
         case Op_mov: {
             result = source_value;
             break;
         }
         case Op_sub: {
-            result = dest_value - source_value;
-            af_flag = ((dest_value & 0xF) - (source_value & 0xF)) & 0x10;
-            should_set_flags = true;
+            result = (dest_value & width_mask) - (source_value & width_mask);
+            uint16_t af_flag = ((dest_value & 0xF) - (source_value & 0xF)) & 0x10;
+            int32_t of_flag = ((dest_value ^ source_value) & (dest_value ^ result)) & sign_bit;
+            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag);
             break;
         }
         case Op_add: {
-            result = dest_value + source_value;
-            af_flag = ((dest_value & 0xF) + (source_value & 0xF)) & 0x10;
-            should_set_flags = true;
+            result = (dest_value & width_mask) + (source_value & width_mask);
+            uint16_t af_flag = ((dest_value & 0xF) + (source_value & 0xF)) & 0x10;
+            int32_t of_flag = (~(dest_value ^ source_value) & (dest_value ^ result)) & sign_bit;
+            breakpoint();
+            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag);
             break;
         }
         case Op_cmp: {
-            result = dest_value - source_value;
+            result = (dest_value & width_mask) - (source_value & width_mask);
+            uint16_t af_flag = 0;
+            int32_t of_flag = 0;
+            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag);
             should_store_result = false;
-            should_set_flags = true;
             break;
         }
         default: {
@@ -197,9 +203,6 @@ void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
             fprintf(stderr, "Unknown instruction type: %s\n", op_name);
             exit(EXIT_FAILURE);
         }
-    }
-    if (should_set_flags) {
-        Sim86RegState_SetFlags(&state->register_state, result, af_flag);
     }
     if (should_store_result) {
         Sim86State_Store(state, dest, result);
