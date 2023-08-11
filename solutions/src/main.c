@@ -76,20 +76,24 @@ typedef union Sim86RegState {
 #define FLAGS_REGISTER_INDEX 14
 
 void Sim86RegState_Init(Sim86RegState* state) { memset(state, 0, sizeof(Sim86RegState)); }
-void Sim86RegState_SetFlags(Sim86RegState* register_state, uint16_t value, uint16_t af_flag, int32_t of_flag) {
+void Sim86RegState_SetFlags(Sim86RegState* register_state, uint32_t value, uint16_t af_flag, int32_t of_flag,
+                            uint32_t width_mask) {
     uint16_t flag_state = 0;
-    flag_state |= value == 0 ? FLAG_ZF : 0;
-    flag_state |= (value & 0b1000000000000000) != 0 ? FLAG_SF : 0;
+    uint32_t masked_value = value & width_mask;
+    flag_state |= masked_value == 0 ? FLAG_ZF : 0;
+    flag_state |= (masked_value & 0b1000000000000000) != 0 ? FLAG_SF : 0;
 
     uint8_t bit_set_count = 0;
     for (size_t mask = 1; mask < 256; mask <<= 1) {
-        bit_set_count += (value & mask) != 0;
+        bit_set_count += (masked_value & mask) != 0;
     }
     flag_state |= (bit_set_count % 2 == 0) ? FLAG_PF : 0;
 
     flag_state |= af_flag ? FLAG_AF : 0;
 
     flag_state |= of_flag ? FLAG_OF : 0;
+
+    flag_state |= value != masked_value ? FLAG_CF : 0;
 
     register_state->flags = flag_state;
 }
@@ -179,22 +183,21 @@ void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
             result = (dest_value & width_mask) - (source_value & width_mask);
             uint16_t af_flag = ((dest_value & 0xF) - (source_value & 0xF)) & 0x10;
             int32_t of_flag = ((dest_value ^ source_value) & (dest_value ^ result)) & sign_bit;
-            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag);
+            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag, width_mask);
             break;
         }
         case Op_add: {
             result = (dest_value & width_mask) + (source_value & width_mask);
             uint16_t af_flag = ((dest_value & 0xF) + (source_value & 0xF)) & 0x10;
             int32_t of_flag = (~(dest_value ^ source_value) & (dest_value ^ result)) & sign_bit;
-            breakpoint();
-            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag);
+            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag, width_mask);
             break;
         }
         case Op_cmp: {
             result = (dest_value & width_mask) - (source_value & width_mask);
-            uint16_t af_flag = 0;
-            int32_t of_flag = 0;
-            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag);
+            uint16_t af_flag = ((dest_value & 0xF) - (source_value & 0xF)) & 0x10;
+            int32_t of_flag = ((dest_value ^ source_value) & (dest_value ^ result)) & sign_bit;
+            Sim86RegState_SetFlags(&state->register_state, result, af_flag, of_flag, width_mask);
             should_store_result = false;
             break;
         }
