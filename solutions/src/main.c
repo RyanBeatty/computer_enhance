@@ -108,6 +108,12 @@ void Sim86State_Init(Sim86State* state) { memset(state, 0, sizeof(Sim86State)); 
 uint16_t Sim86State_Load(Sim86State* state, instruction_operand source) {
     uint8_t vals[2];
     switch (source.Type) {
+        case Operand_None: {
+            // Just return nothing basically
+            vals[0] = 0;
+            vals[1] = 0;
+            break;
+        }
         case Operand_Immediate: {
             immediate imm = source.Immediate;
             vals[0] = imm.Value;
@@ -166,7 +172,7 @@ void Sim86State_Store(Sim86State* state, instruction_operand dest, uint16_t valu
     }
 }
 
-void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
+void Sim86State_SimulateInstruction(Sim86State* state, instruction instr) {
     instruction_operand source = instr.Operands[1];
     instruction_operand dest = instr.Operands[0];
     uint32_t source_value = Sim86State_Load(state, source);
@@ -202,6 +208,12 @@ void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
             should_store_result = false;
             break;
         }
+        case Op_jne: {
+            int16_t jump_displacement = (int16_t)dest_value;
+            state->register_state.ip += state->register_state.flags & FLAG_ZF ? 0 : jump_displacement;
+            should_store_result = false;
+            break;
+        }
         default: {
             const char* op_name = Sim86_MnemonicFromOperationType(instr.Op);
             fprintf(stderr, "Unknown instruction type: %s\n", op_name);
@@ -210,23 +222,6 @@ void Sim86State_SimulateBinaryOp(Sim86State* state, instruction instr) {
     }
     if (should_store_result) {
         Sim86State_Store(state, dest, result);
-    }
-}
-
-void Sim86State_SimulateInstruction(Sim86State* state, instruction instruction) {
-    switch (instruction.Op) {
-        case Op_mov:
-        case Op_add:
-        case Op_sub:
-        case Op_cmp: {
-            Sim86State_SimulateBinaryOp(state, instruction);
-            break;
-        }
-        default: {
-            const char* op_name = Sim86_MnemonicFromOperationType(instruction.Op);
-            fprintf(stderr, "Unknown instruction type: %s\n", op_name);
-            exit(EXIT_FAILURE);
-        }
     }
 }
 
@@ -331,8 +326,11 @@ void PrintOperand(instruction_operand operand, FILE* stream) {
         }
         case Operand_Immediate: {
             immediate imm = operand.Immediate;
-            Assert(imm.Flags == 0);
-            fprintf(stream, "%" PRId32 "", imm.Value);
+            if (imm.Flags & Immediate_RelativeJumpDisplacement) {
+                fprintf(stream, "$%d", imm.Value + 2);
+            } else {
+                fprintf(stream, "%d", imm.Value);
+            }
             break;
         }
         default: {
