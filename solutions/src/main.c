@@ -73,6 +73,7 @@ typedef union Sim86RegState {
 
 } Sim86RegState;
 
+#define IP_REGISTER_INDEX 13
 #define FLAGS_REGISTER_INDEX 14
 
 void Sim86RegState_Init(Sim86RegState* state) { memset(state, 0, sizeof(Sim86RegState)); }
@@ -229,7 +230,7 @@ void Sim86State_SimulateInstruction(Sim86State* state, instruction instruction) 
     }
 }
 
-typedef enum Sim86Flags { Sim86Flags_Sim_State = 0x01 } Sim86Flags;
+typedef enum Sim86Flags { Sim86Flags_Sim_State = (1 << 0), Sim86Flags_Print_Ip_Reg = (1 << 1) } Sim86Flags;
 
 uint32_t ParseCommandLineArgs(int argc, char* argv[], char** input_filename) {
     uint32_t flags = 0;
@@ -240,11 +241,12 @@ uint32_t ParseCommandLineArgs(int argc, char* argv[], char** input_filename) {
                                                /* These options don’t set a flag.
                                                   We distinguish them by their indices. */
                                                {"simstate", no_argument, 0, 's'},
+                                               {"printip", no_argument, 0, 'p'},
                                                {0, 0, 0, 0}};
         /* getopt_long stores the option index here. */
         int option_index = 0;
 
-        c = getopt_long(argc, argv, "s", long_options, &option_index);
+        c = getopt_long(argc, argv, "sp", long_options, &option_index);
 
         /* Detect the end of the options. */
         if (c == -1) break;
@@ -261,6 +263,10 @@ uint32_t ParseCommandLineArgs(int argc, char* argv[], char** input_filename) {
 
             case 's':
                 flags |= Sim86Flags_Sim_State;
+                break;
+
+            case 'p':
+                flags |= Sim86Flags_Print_Ip_Reg;
                 break;
 
             case '?':
@@ -377,7 +383,7 @@ void PrintSim86RegStateFlags(uint16_t flags, FILE* stream) {
     }
 }
 
-void PrintSim86RegStateDiff(Sim86RegState old, Sim86RegState new, FILE* stream) {
+void PrintSim86RegStateDiff(Sim86RegState old, Sim86RegState new, FILE* stream, uint32_t flags) {
     fprintf(stream, " ;");
 
     size_t len = sizeof(new.registers) / sizeof(new.registers[0]);
@@ -391,6 +397,8 @@ void PrintSim86RegStateDiff(Sim86RegState old, Sim86RegState new, FILE* stream) 
                 PrintSim86RegStateFlags(old.flags, stream);
                 fprintf(stream, "->");
                 PrintSim86RegStateFlags(new.flags, stream);
+            } else if (i == IP_REGISTER_INDEX && !(flags & Sim86Flags_Print_Ip_Reg)) {
+                continue;
             } else {
                 register_access access = {.Index = i, .Offset = 0, .Count = 2};
                 const char* reg_name = Sim86_RegisterNameFromOperand(&access);
@@ -402,7 +410,7 @@ void PrintSim86RegStateDiff(Sim86RegState old, Sim86RegState new, FILE* stream) 
     fprintf(stream, " ");
 }
 
-void PrintSim86RegStateFinal(Sim86RegState reg_state, FILE* stream) {
+void PrintSim86RegStateFinal(Sim86RegState reg_state, FILE* stream, uint32_t flags) {
     fprintf(stream, "Final registers:\n");
     size_t len = sizeof(reg_state.registers) / sizeof(reg_state.registers[0]);
     for (size_t i = 1; i < len; ++i) {
@@ -410,11 +418,14 @@ void PrintSim86RegStateFinal(Sim86RegState reg_state, FILE* stream) {
         const char* reg_name = Sim86_RegisterNameFromOperand(&access);
         uint16_t value = reg_state.registers[i];
         if (value) {
-            fprintf(stream, "%8s: ", reg_name);
             if (i == FLAGS_REGISTER_INDEX) {
+                fprintf(stream, "%8s: ", reg_name);
                 PrintSim86RegStateFlags(value, stream);
                 fprintf(stream, "\n");
+            } else if (i == IP_REGISTER_INDEX && !(flags & Sim86Flags_Print_Ip_Reg)) {
+                continue;
             } else {
+                fprintf(stream, "%8s: ", reg_name);
                 fprintf(stream, "0x%04x (%u)\n", value, value);
             }
         }
@@ -433,16 +444,16 @@ int main(int argc, char* argv[]) {
     Sim86State_Init(&state);
     Sim86RegState register_state_old = state.register_state;
 
-    uint32_t Offset = 0;
-    while (Offset < buffer_length) {
+    while (state.register_state.ip < buffer_length) {
         instruction Decoded;
-        Sim86_Decode8086Instruction(buffer_length - Offset, disassembly + Offset, &Decoded);
+        Sim86_Decode8086Instruction(buffer_length - state.register_state.ip, disassembly + state.register_state.ip,
+                                    &Decoded);
         if (Decoded.Op) {
-            Offset += Decoded.Size;
+            state.register_state.ip += Decoded.Size;
             Sim86State_SimulateInstruction(&state, Decoded);
             PrintInstruction(Decoded, stdout);
             if (flags & Sim86Flags_Sim_State) {
-                PrintSim86RegStateDiff(register_state_old, state.register_state, stdout);
+                PrintSim86RegStateDiff(register_state_old, state.register_state, stdout, flags);
             }
             printf("\n");
         } else {
@@ -454,7 +465,7 @@ int main(int argc, char* argv[]) {
     printf("\n");
 
     if (flags & Sim86Flags_Sim_State) {
-        PrintSim86RegStateFinal(state.register_state, stdout);
+        PrintSim86RegStateFinal(state.register_state, stdout, flags);
     }
 
     return 0;

@@ -21,6 +21,16 @@ then
     # Remove carriage return.
     sed 's/\r$//' ./build/no_header.txt > ./build/actual.txt
     diff ./build/test.txt ./build/actual.txt
+elif [ "$2" == "printip" ]
+then
+    echo "printip"
+    # Test simulate.
+    ./build/main --simstate --printip $FILENAME > ./build/test.txt;
+    # Remove the header line from Casey's output.
+    sed 1d "$FILENAME.txt" > ./build/no_header.txt
+    # Remove carriage return.
+    sed 's/\r$//' ./build/no_header.txt > ./build/actual.txt
+    diff ./build/test.txt ./build/actual.txt
 else
     echo "debug"
     # Run with gdb.
