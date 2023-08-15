@@ -214,6 +214,34 @@ void Sim86State_SimulateInstruction(Sim86State* state, instruction instr) {
             should_store_result = false;
             break;
         }
+        case Op_je: {
+            int16_t jump_displacement = (int16_t)dest_value;
+            state->register_state.ip += state->register_state.flags & FLAG_ZF ? jump_displacement : 0;
+            should_store_result = false;
+            break;
+        }
+        case Op_jb: {
+            int16_t jump_displacement = (int16_t)dest_value;
+            state->register_state.ip += state->register_state.flags & FLAG_CF ? jump_displacement : 0;
+            should_store_result = false;
+            break;
+        }
+        case Op_jp: {
+            int16_t jump_displacement = (int16_t)dest_value;
+            state->register_state.ip += state->register_state.flags & FLAG_PF ? jump_displacement : 0;
+            should_store_result = false;
+            break;
+        }
+        case Op_loopnz: {
+            int16_t jump_displacement = (int16_t)dest_value;
+            // TODO: Is this a good idea to be directly decrementing a register like this? Should I rebuild a "dest"
+            // object so that Sim86State_Store works?
+            --state->register_state.cx;
+            state->register_state.ip +=
+                state->register_state.cx != 0 && !(state->register_state.flags & FLAG_ZF) ? jump_displacement : 0;
+            should_store_result = false;
+            break;
+        }
         default: {
             const char* op_name = Sim86_MnemonicFromOperationType(instr.Op);
             fprintf(stderr, "Unknown instruction type: %s\n", op_name);
@@ -327,7 +355,8 @@ void PrintOperand(instruction_operand operand, FILE* stream) {
         case Operand_Immediate: {
             immediate imm = operand.Immediate;
             if (imm.Flags & Immediate_RelativeJumpDisplacement) {
-                fprintf(stream, "$%d", imm.Value + 2);
+                // The '+' will print both minus and plus signs which is what Casey does.
+                fprintf(stream, "$%+d", imm.Value + 2);
             } else {
                 fprintf(stream, "%d", imm.Value);
             }
