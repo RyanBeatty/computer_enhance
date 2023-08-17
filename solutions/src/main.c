@@ -101,9 +101,29 @@ void Sim86RegState_SetFlags(Sim86RegState* register_state, uint32_t value, uint1
 
 typedef struct Sim86State {
     Sim86RegState register_state;
+    uint8_t memory[65536];
 } Sim86State;
 
 void Sim86State_Init(Sim86State* state) { memset(state, 0, sizeof(Sim86State)); }
+
+uint16_t LoadRegister(Sim86State* state, register_access reg) {
+    uint8_t vals[2];
+    // TODO: Coalesce with storing values into registers.
+    Sim86RegState* register_state = &state->register_state;
+    // Find the base address of the register we are storing into.
+    Assert(reg.Index < (sizeof(register_state->registers) / sizeof(register_state->registers[0])));
+    uint8_t* reg_ptr = (uint8_t*)&register_state->registers[reg.Index];
+    // Offset our base address if we are only addressing the high portion of the register.
+    reg_ptr += reg.Offset;
+    for (size_t i = 0; i < reg.Count; ++i) {
+        vals[i] = reg_ptr[i];
+    }
+
+    uint16_t value = 0;
+    value |= vals[0];
+    value |= vals[1] << 8;
+    return value;
+}
 
 uint16_t Sim86State_Load(Sim86State* state, instruction_operand source) {
     uint8_t vals[2];
@@ -132,6 +152,16 @@ uint16_t Sim86State_Load(Sim86State* state, instruction_operand source) {
             for (size_t i = 0; i < reg.Count; ++i) {
                 vals[i] = reg_ptr[i];
             }
+            break;
+        }
+        case Operand_Memory: {
+            effective_address_expression address = source.Address;
+            // TODO: I think I need to take into account signedness here?
+            uint16_t term1 = LoadRegister(state, address.Terms[0].Register);
+            uint16_t term2 = LoadRegister(state, address.Terms[1].Register);
+            uint16_t start = term1 + term2 + address.Displacement;
+            vals[0] = state->memory[start];
+            vals[1] = state->memory[start + sizeof(uint8_t)];
             break;
         }
         default: {
@@ -163,6 +193,16 @@ void Sim86State_Store(Sim86State* state, instruction_operand dest, uint16_t valu
             for (size_t i = 0; i < reg.Count; ++i) {
                 reg_ptr[i] = vals[i];
             }
+            break;
+        }
+        case Operand_Memory: {
+            effective_address_expression address = dest.Address;
+            // TODO: I think I need to take into account signedness here?
+            uint16_t term1 = LoadRegister(state, address.Terms[0].Register);
+            uint16_t term2 = LoadRegister(state, address.Terms[1].Register);
+            uint16_t start = term1 + term2 + address.Displacement;
+            state->memory[start] = vals[0];
+            state->memory[start + sizeof(uint8_t)] = vals[1];
             break;
         }
         default: {
@@ -328,18 +368,18 @@ void PrintMemoryAccess(effective_address_expression address, FILE* stream) {
     fprintf(stream, "[");
     PrintRegisterAccess(address.Terms[0].Register, stream);
     if (address.Terms[1].Register.Index) {
-        fprintf(stream, " + ");
+        fprintf(stream, "+");
         PrintRegisterAccess(address.Terms[1].Register, stream);
     }
     if (address.Displacement) {
         const char sign = address.Displacement >= 0 ? '+' : '-';
-        fprintf(stream, " %c ", sign);
+        fprintf(stream, "%c", sign);
         fprintf(stream, "%" PRId32 "", address.Displacement);
     }
     fprintf(stream, "]");
 }
 
-void PrintOperand(instruction_operand operand, FILE* stream) {
+void PrintOperand(instruction_operand operand, FILE* stream, bool is_dest_op) {
     switch (operand.Type) {
         case Operand_None: {
             break;
@@ -349,6 +389,10 @@ void PrintOperand(instruction_operand operand, FILE* stream) {
             break;
         }
         case Operand_Memory: {
+            // TODO: Revisit this since we might not always move words?
+            if (is_dest_op) {
+                fprintf(stream, "word ");
+            }
             PrintMemoryAccess(operand.Address, stream);
             break;
         }
@@ -372,11 +416,11 @@ void PrintOperand(instruction_operand operand, FILE* stream) {
 void PrintInstruction(instruction instruction, FILE* stream) {
     const char* op = Sim86_MnemonicFromOperationType(instruction.Op);
     fprintf(stream, "%s ", op);
-    PrintOperand(instruction.Operands[0], stream);
+    PrintOperand(instruction.Operands[0], stream, true);
     if (instruction.Operands[1].Type) {
         fprintf(stream, ", ");
     }
-    PrintOperand(instruction.Operands[1], stream);
+    PrintOperand(instruction.Operands[1], stream, false);
 }
 
 void PrintSim86RegStateFlags(uint16_t flags, FILE* stream) {
